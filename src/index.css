@@ -173,3 +173,8 @@ body { font-family: var(--font-body); background: var(--sand); color: var(--text
 @media (max-width: 1024px) { .dashboard-body { flex-direction: column; } .sidebar { width: 100%; border-left: none; border-top: 1px solid var(--border); } .week-grid { min-height: auto; } .header-center { display: none; } }
 @media (max-width: 768px) { .dashboard-header { padding: 12px 16px; flex-wrap: wrap; gap: 10px; } .app-title { font-size: 18px; } .main-content { padding: 12px; } .week-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; } .modal-content { margin: 16px; padding: 20px; } .login-card { margin: 16px; padding: 32px 24px; } .form-grid { grid-template-columns: 1fr; } .detail-grid { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .week-grid { grid-template-columns: 1fr; } .header-right { width: 100%; justify-content: space-between; } }
+
+.detail-status-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.btn-status-toggle { padding: 6px 16px; background: white; color: var(--navy); border: 1.5px solid var(--navy); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+.btn-status-toggle:hover { background: var(--sand); }
+.btn-status-toggle:disabled { opacity: 0.6; cursor: not-allowed; }

@@ -172,14 +172,24 @@ function ReservationFormModal({ onClose, onSave, initial }: {
 }
 
 // ---- Detail Modal ----
-function ReservationDetailModal({ reservation, onClose, onEdit, onDelete }: {
-  reservation: Reservation; onClose: () => void; onEdit: () => void; onDelete: () => void;
+function ReservationDetailModal({ reservation, onClose, onEdit, onDelete, onStatusChange }: {
+  reservation: Reservation; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatusChange: (status: ReservationStatus) => void;
 }) {
+  const [changingStatus, setChangingStatus] = useState(false);
+  const newStatus = reservation.status === 'Reserva' ? 'Check-in' : 'Reserva';
+  const handleStatusToggle = async () => {
+    setChangingStatus(true);
+    await onStatusChange(newStatus as ReservationStatus);
+    setChangingStatus(false);
+  };
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header"><h2>Detalle de Reservacion</h2><button className="modal-close" onClick={onClose}>✕</button></div>
-        <div className={`detail-status-badge status-${reservation.status.toLowerCase().replace('-','')}`}>{reservation.status}</div>
+        <div className="detail-status-row">
+          <div className={`detail-status-badge status-${reservation.status.toLowerCase().replace('-','')}`}>{reservation.status}</div>
+          <button className="btn-status-toggle" onClick={handleStatusToggle} disabled={changingStatus}>{changingStatus ? 'Cambiando...' : `Cambiar a ${newStatus}`}</button>
+        </div>
         <div className="detail-grid">
           <div className="detail-row"><span className="detail-label">Nombre</span><span className="detail-value">{reservation.name}</span></div>
           <div className="detail-row"><span className="detail-label">Empleado</span><span className="detail-value">{reservation.employee}</span></div>
@@ -193,10 +203,7 @@ function ReservationDetailModal({ reservation, onClose, onEdit, onDelete }: {
           <div className="detail-row"><span className="detail-label">Anticipo 50%</span><span className="detail-value">{reservation.anticipoPaid ? 'Si' : 'No'}</span></div>
           <div className="detail-row"><span className="detail-label">Precio</span><span className="detail-value detail-price">{formatMXN(reservation.price)}</span></div>
         </div>
-        <div className="modal-actions">
-          <button className="btn-danger" onClick={onDelete}>Eliminar</button>
-          <button className="btn-primary" onClick={onEdit}>Editar</button>
-        </div>
+        <div className="modal-actions"><button className="btn-danger" onClick={onDelete}>Eliminar</button><button className="btn-primary" onClick={onEdit}>Editar</button></div>
       </div>
     </div>
   );
@@ -331,7 +338,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       {detailReservation && !editReservation && (
         <ReservationDetailModal reservation={detailReservation} onClose={() => setDetailReservation(null)}
           onEdit={() => { setEditReservation(detailReservation); setDetailReservation(null); }}
-          onDelete={() => handleDelete(detailReservation)} />
+          onDelete={() => handleDelete(detailReservation)}
+          onStatusChange={async (newStatus) => {
+            if (!detailReservation.rowIndex) return;
+            const result = await apiUpdateReservation({ rowIndex: detailReservation.rowIndex, name: detailReservation.name, employee: detailReservation.employee, phone: detailReservation.phone, email: detailReservation.email, date: detailReservation.date, roomType: detailReservation.roomType, numPeople: detailReservation.numPeople, roomNumber: detailReservation.roomNumber, paymentType: detailReservation.paymentType, anticipoPaid: detailReservation.anticipoPaid, status: newStatus });
+            if (result.success) { showToast('Estado actualizado'); setDetailReservation(null); fetchReservations(); }
+            else { showToast('Error al actualizar', 'error'); }
+          }} />
       )}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.type === 'success' ? '✓' : '✕'} {toast.message}</div>}
     </div>
