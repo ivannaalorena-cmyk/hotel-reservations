@@ -1,5 +1,8 @@
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzijjds_LtVyIm7R6_W7i5hgjwBhMA0uIQOk3byv2hmP5tfF2LD8FGYZMirFoG8lME2/exec';
 
+cat > src/api.ts << 'ENDOFFILE'
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzijjds_LtVyIm7R6_W7i5hgjwBhMA0uIQOk3byv2hmP5tfF2LD8FGYZMirFoG8lME2/exec';
+
 async function gasGet(params: Record<string, string>) {
   const url = new URL(SCRIPT_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
@@ -24,6 +27,7 @@ export async function apiGetReservations(startDate: string, endDate: string) {
 
 export async function apiAddReservation(reservation: {
   name: string;
+  employee: string;
   date: string;
   roomType: string;
   paymentType: string;
@@ -31,16 +35,17 @@ export async function apiAddReservation(reservation: {
   const data = await gasGet({
     action: 'addReservation',
     name: reservation.name,
+    employee: reservation.employee,
     date: reservation.date,
     roomType: reservation.roomType,
     paymentType: reservation.paymentType,
   });
-  return data || { error: 'Error de conexión' };
+  return data || { error: 'Error de conexion' };
 }
 
 export async function apiDeleteReservation(rowIndex: number) {
   const data = await gasGet({ action: 'deleteReservation', rowIndex: rowIndex.toString() });
-  return data || { error: 'Error de conexión' };
+  return data || { error: 'Error de conexion' };
 }
 
 export async function apiGetAvailability(date: string) {

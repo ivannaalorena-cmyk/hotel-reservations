@@ -1,6 +1,7 @@
 export interface Reservation {
   id: string;
   name: string;
+  employee: string;
   date: string;
   roomType: RoomType;
   paymentType: PaymentType;
@@ -57,5 +58,5 @@ export const ROOM_ICONS: Record<RoomType, string> = {
   '2 Camas King Size': '👑👑',
 };
 
-export const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-export const DAY_NAMES_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+export const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+export const DAY_NAMES_SHORT = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'];

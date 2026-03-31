@@ -202,9 +202,10 @@ function NewReservationModal({
   onSave,
 }: {
   onClose: () => void;
-  onSave: (data: { name: string; date: string; roomType: RoomType; paymentType: PaymentType }) => void;
+  onSave: (data: { name: string; employee: string; date: string; roomType: RoomType; paymentType: PaymentType }) => void;
 }) {
   const [name, setName] = useState('');
+  const [employee, setEmployee] = useState('');
   const [date, setDate] = useState('');
   const [roomType, setRoomType] = useState<RoomType>(ROOM_TYPES[0]);
   const [paymentType, setPaymentType] = useState<PaymentType>(PAYMENT_TYPES[0]);
@@ -214,9 +215,9 @@ function NewReservationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !date) return;
+    if (!name.trim() || !employee.trim() || !date) return;
     setSaving(true);
-    await onSave({ name: name.trim(), date, roomType, paymentType });
+    await onSave({ name: name.trim(), employee: employee.trim(), date, roomType, paymentType });
     setSaving(false);
   };
 
@@ -242,6 +243,18 @@ function NewReservationModal({
               placeholder="Nombre completo"
               required
               autoFocus
+            />
+          </div>
+
+          <div className="input-group">
+            <label htmlFor="res-employee">Nombre del Empleado</label>
+            <input
+              id="res-employee"
+              type="text"
+              value={employee}
+              onChange={(e) => setEmployee(e.target.value)}
+              placeholder="Nombre del empleado"
+              required
             />
           </div>
 
@@ -305,7 +318,7 @@ function NewReservationModal({
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancelar
             </button>
-            <button type="submit" className="btn-primary" disabled={saving || !name.trim() || !date}>
+            <button type="submit" className="btn-primary" disabled={saving || !name.trim() || !employee.trim() || !date}>
               {saving ? 'Guardando...' : 'Guardar Reservación'}
             </button>
           </div>
@@ -399,6 +412,7 @@ function WeekView({
                       </button>
                     </div>
                     <span className="chip-room">{ROOM_ICONS[r.roomType]} {r.roomType}</span>
+                    <span className="chip-employee">👤 {r.employee}</span>
                     <div className="chip-bottom">
                       <span className="chip-payment">
                         {r.paymentType === 'Tarjeta' ? '💳' : r.paymentType === 'Efectivo' ? '💵' : '⏳'}{' '}
@@ -454,6 +468,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   const handleAddReservation = async (data: {
     name: string;
+    employee: string;
     date: string;
     roomType: RoomType;
     paymentType: PaymentType;
@@ -568,4 +583,3 @@ export default function App() {
 
   return <Dashboard onLogout={handleLogout} />;
 }
-

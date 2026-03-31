@@ -957,3 +957,10 @@ body {
     justify-content: space-between;
   }
 }
+
+.chip-employee {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin-bottom: 3px;
+}
