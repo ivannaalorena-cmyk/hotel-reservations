@@ -25,17 +25,59 @@ export async function apiGetReservations(startDate: string, endDate: string) {
 export async function apiAddReservation(reservation: {
   name: string;
   employee: string;
+  phone: string;
+  email: string;
   date: string;
   roomType: string;
+  numPeople: number;
+  roomNumber: string;
   paymentType: string;
+  anticipoPaid: boolean;
 }) {
   const data = await gasGet({
     action: 'addReservation',
     name: reservation.name,
     employee: reservation.employee,
+    phone: reservation.phone,
+    email: reservation.email,
     date: reservation.date,
     roomType: reservation.roomType,
+    numPeople: reservation.numPeople.toString(),
+    roomNumber: reservation.roomNumber,
     paymentType: reservation.paymentType,
+    anticipoPaid: reservation.anticipoPaid ? 'true' : 'false',
+  });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiUpdateReservation(reservation: {
+  rowIndex: number;
+  name: string;
+  employee: string;
+  phone: string;
+  email: string;
+  date: string;
+  roomType: string;
+  numPeople: number;
+  roomNumber: string;
+  paymentType: string;
+  anticipoPaid: boolean;
+  status: string;
+}) {
+  const data = await gasGet({
+    action: 'updateReservation',
+    rowIndex: reservation.rowIndex.toString(),
+    name: reservation.name,
+    employee: reservation.employee,
+    phone: reservation.phone,
+    email: reservation.email,
+    date: reservation.date,
+    roomType: reservation.roomType,
+    numPeople: reservation.numPeople.toString(),
+    roomNumber: reservation.roomNumber,
+    paymentType: reservation.paymentType,
+    anticipoPaid: reservation.anticipoPaid ? 'true' : 'false',
+    status: reservation.status,
   });
   return data || { error: 'Error de conexion' };
 }
