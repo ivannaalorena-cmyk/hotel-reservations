@@ -1,30 +1,25 @@
-// ============================================================
-// UPDATE THIS URL after deploying your Google Apps Script
-// ============================================================
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzijjds_LtVyIm7R6_W7i5hgjwBhMA0uIQOk3byv2hmP5tfF2LD8FGYZMirFoG8lME2/exec';
 
-export async function apiLogin(password: string): Promise<boolean> {
+async function gasGet(params: Record<string, string>) {
+  const url = new URL(SCRIPT_URL);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=login&password=${encodeURIComponent(password)}`);
-    const data = await res.json();
-    return data.success === true;
+    const res = await fetch(url.toString(), { method: 'GET', redirect: 'follow' });
+    return await res.json();
   } catch (err) {
-    console.error('Login error:', err);
-    return false;
+    console.error('GAS request error:', err);
+    return null;
   }
 }
 
+export async function apiLogin(password: string): Promise<boolean> {
+  const data = await gasGet({ action: 'login', password });
+  return data?.success === true;
+}
+
 export async function apiGetReservations(startDate: string, endDate: string) {
-  try {
-    const res = await fetch(
-      `${SCRIPT_URL}?action=getReservations&startDate=${startDate}&endDate=${endDate}`
-    );
-    const data = await res.json();
-    return data.reservations || [];
-  } catch (err) {
-    console.error('Fetch reservations error:', err);
-    return [];
-  }
+  const data = await gasGet({ action: 'getReservations', startDate, endDate });
+  return data?.reservations || [];
 }
 
 export async function apiAddReservation(reservation: {
@@ -33,38 +28,22 @@ export async function apiAddReservation(reservation: {
   roomType: string;
   paymentType: string;
 }) {
-  try {
-    const res = await fetch(`${SCRIPT_URL}?action=addReservation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reservation),
-    });
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('Add reservation error:', err);
-    return { error: 'Error de conexión' };
-  }
+  const data = await gasGet({
+    action: 'addReservation',
+    name: reservation.name,
+    date: reservation.date,
+    roomType: reservation.roomType,
+    paymentType: reservation.paymentType,
+  });
+  return data || { error: 'Error de conexión' };
 }
 
 export async function apiDeleteReservation(rowIndex: number) {
-  try {
-    const res = await fetch(`${SCRIPT_URL}?action=deleteReservation&rowIndex=${rowIndex}`);
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('Delete reservation error:', err);
-    return { error: 'Error de conexión' };
-  }
+  const data = await gasGet({ action: 'deleteReservation', rowIndex: rowIndex.toString() });
+  return data || { error: 'Error de conexión' };
 }
 
 export async function apiGetAvailability(date: string) {
-  try {
-    const res = await fetch(`${SCRIPT_URL}?action=getAvailability&date=${date}`);
-    const data = await res.json();
-    return data.availability || {};
-  } catch (err) {
-    console.error('Availability error:', err);
-    return {};
-  }
+  const data = await gasGet({ action: 'getAvailability', date });
+  return data?.availability || {};
 }
