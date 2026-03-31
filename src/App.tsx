@@ -568,3 +568,4 @@ export default function App() {
 
   return <Dashboard onLogout={handleLogout} />;
 }
+
