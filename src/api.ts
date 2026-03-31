@@ -1,8 +1,5 @@
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzijjds_LtVyIm7R6_W7i5hgjwBhMA0uIQOk3byv2hmP5tfF2LD8FGYZMirFoG8lME2/exec';
 
-cat > src/api.ts << 'ENDOFFILE'
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzijjds_LtVyIm7R6_W7i5hgjwBhMA0uIQOk3byv2hmP5tfF2LD8FGYZMirFoG8lME2/exec';
-
 async function gasGet(params: Record<string, string>) {
   const url = new URL(SCRIPT_URL);
   Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
