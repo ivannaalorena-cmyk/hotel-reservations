@@ -172,16 +172,15 @@ function ReservationFormModal({ onClose, onSave, initial }: {
 }
 
 // ---- Detail Modal ----
-function ReservationDetailModal({ reservation, onClose, onEdit, onDelete, onStatusChange }: {
-  reservation: Reservation; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatusChange: (status: ReservationStatus) => void;
+function ReservationDetailModal({ reservation, onClose, onEdit, onDelete, onStatusChange, onPaymentChange }: {
+  reservation: Reservation; onClose: () => void; onEdit: () => void; onDelete: () => void; onStatusChange: (status: ReservationStatus) => void; onPaymentChange: (payment: PaymentType) => void;
 }) {
   const [changingStatus, setChangingStatus] = useState(false);
+  const [changingPayment, setChangingPayment] = useState(false);
   const newStatus = reservation.status === 'Reserva' ? 'Check-in' : 'Reserva';
-  const handleStatusToggle = async () => {
-    setChangingStatus(true);
-    await onStatusChange(newStatus as ReservationStatus);
-    setChangingStatus(false);
-  };
+  const handleStatusToggle = async () => { setChangingStatus(true); await onStatusChange(newStatus as ReservationStatus); setChangingStatus(false); };
+  const handlePaymentChange = async (pt: PaymentType) => { setChangingPayment(true); await onPaymentChange(pt); setChangingPayment(false); };
+  const isPagoFaltante = reservation.paymentType === 'Pago Faltante';
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -199,9 +198,17 @@ function ReservationDetailModal({ reservation, onClose, onEdit, onDelete, onStat
           <div className="detail-row"><span className="detail-label">Habitacion</span><span className="detail-value">{reservation.roomType}</span></div>
           <div className="detail-row"><span className="detail-label">Cuarto #</span><span className="detail-value">{reservation.roomNumber || 'No asignado'}</span></div>
           <div className="detail-row"><span className="detail-label">Personas</span><span className="detail-value">{reservation.numPeople}</span></div>
-          <div className="detail-row"><span className="detail-label">Pago</span><span className="detail-value">{reservation.paymentType}</span></div>
           <div className="detail-row"><span className="detail-label">Anticipo 50%</span><span className="detail-value">{reservation.anticipoPaid ? 'Si' : 'No'}</span></div>
           <div className="detail-row"><span className="detail-label">Precio</span><span className="detail-value detail-price">{formatMXN(reservation.price)}</span></div>
+        </div>
+        <div className="detail-payment-row">
+          <span className="detail-label">Pago: <strong>{reservation.paymentType}</strong></span>
+          {isPagoFaltante && (
+            <div className="payment-change-buttons">
+              <button className="btn-payment-change tarjeta" onClick={() => handlePaymentChange('Tarjeta')} disabled={changingPayment}>Cambiar a Tarjeta</button>
+              <button className="btn-payment-change efectivo" onClick={() => handlePaymentChange('Efectivo')} disabled={changingPayment}>Cambiar a Efectivo</button>
+            </div>
+          )}
         </div>
         <div className="modal-actions"><button className="btn-danger" onClick={onDelete}>Eliminar</button><button className="btn-primary" onClick={onEdit}>Editar</button></div>
       </div>
@@ -343,6 +350,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             if (!detailReservation.rowIndex) return;
             const result = await apiUpdateReservation({ rowIndex: detailReservation.rowIndex, name: detailReservation.name, employee: detailReservation.employee, phone: detailReservation.phone, email: detailReservation.email, date: detailReservation.date, roomType: detailReservation.roomType, numPeople: detailReservation.numPeople, roomNumber: detailReservation.roomNumber, paymentType: detailReservation.paymentType, anticipoPaid: detailReservation.anticipoPaid, status: newStatus });
             if (result.success) { showToast('Estado actualizado'); setDetailReservation(null); fetchReservations(); }
+            else { showToast('Error al actualizar', 'error'); }
+          }}
+          onPaymentChange={async (newPayment) => {
+            if (!detailReservation.rowIndex) return;
+            const result = await apiUpdateReservation({ rowIndex: detailReservation.rowIndex, name: detailReservation.name, employee: detailReservation.employee, phone: detailReservation.phone, email: detailReservation.email, date: detailReservation.date, roomType: detailReservation.roomType, numPeople: detailReservation.numPeople, roomNumber: detailReservation.roomNumber, paymentType: newPayment, anticipoPaid: detailReservation.anticipoPaid, status: detailReservation.status });
+            if (result.success) { showToast('Tipo de pago actualizado'); setDetailReservation(null); fetchReservations(); }
             else { showToast('Error al actualizar', 'error'); }
           }} />
       )}

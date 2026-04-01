@@ -178,3 +178,14 @@ body { font-family: var(--font-body); background: var(--sand); color: var(--text
 .btn-status-toggle { padding: 6px 16px; background: white; color: var(--navy); border: 1.5px solid var(--navy); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
 .btn-status-toggle:hover { background: var(--sand); }
 .btn-status-toggle:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.detail-payment-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; margin-bottom: 16px; border-top: 1px solid var(--sand-dark); border-bottom: 1px solid var(--sand-dark); }
+.detail-payment-row .detail-label { font-size: 13px; color: var(--text-secondary); }
+.detail-payment-row .detail-label strong { color: var(--text-primary); }
+.payment-change-buttons { display: flex; gap: 8px; }
+.btn-payment-change { padding: 5px 12px; border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+.btn-payment-change:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-payment-change.tarjeta { background: white; color: #3182ce; border: 1.5px solid #3182ce; }
+.btn-payment-change.tarjeta:hover { background: #ebf4ff; }
+.btn-payment-change.efectivo { background: white; color: var(--success); border: 1.5px solid var(--success); }
+.btn-payment-change.efectivo:hover { background: var(--success-bg); }
