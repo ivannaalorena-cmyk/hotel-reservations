@@ -139,3 +139,9 @@ html{font-size:15px}body{font-family:var(--font-body);background:var(--sand);col
 
 @media(max-width:1024px){.sidebar-left{width:240px}.room-boxes{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}
 @media(max-width:768px){.dashboard{flex-direction:column}.sidebar-left{width:100%;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border)}.main-scroll{padding:12px}.form-grid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}.modal-content{margin:16px;padding:20px}.login-card{margin:16px;padding:32px 24px}.day-tabs{overflow-x:auto}}
+
+.input-group.full-width { grid-column: 1 / -1; }
+.detail-row.full-width { grid-column: 1 / -1; }
+.input-group textarea { width: 100%; padding: 9px 11px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-family: var(--font-body); font-size: 13px; color: var(--text-primary); background: white; resize: vertical; transition: border-color .2s, box-shadow .2s; }
+.input-group textarea:focus { outline: none; border-color: var(--terracotta); box-shadow: 0 0 0 3px rgba(252,176,1,.15); }
+.input-group textarea::placeholder { color: var(--text-muted); }
