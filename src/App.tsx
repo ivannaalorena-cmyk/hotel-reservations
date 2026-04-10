@@ -18,7 +18,7 @@ function getMonday(d: Date): Date {
   return date;
 }
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
-function fmt(d: Date) { return d.toISOString().split('T')[0]; }
+function fmt(d: Date) { const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
 function fmtDisp(s: string) { const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; }
 function fmtMXN(n: number) { return `$${n.toLocaleString('es-MX')} MXN`; }
 function weekDays(mon: Date) { return Array.from({ length: 7 }, (_, i) => addDays(mon, i)); }
