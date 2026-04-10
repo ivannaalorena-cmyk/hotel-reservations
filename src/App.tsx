@@ -166,7 +166,7 @@ function NewReservationModal({ onClose, onSave }: {
   let nights = 0;
   if (startDate && endDate && endDate >= startDate) {
     const s = new Date(startDate + 'T12:00:00'), e = new Date(endDate + 'T12:00:00');
-    nights = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
+    nights = Math.round((e.getTime() - s.getTime()) / 86400000);
   }
 
   const submit = async (e: React.FormEvent) => {
