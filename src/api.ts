@@ -23,71 +23,70 @@ export async function apiGetReservations(startDate: string, endDate: string) {
 }
 
 export async function apiAddReservation(reservation: {
-  name: string;
-  employee: string;
-  phone: string;
-  email: string;
-  origin: string;
-  startDate: string;
-  endDate: string;
-  roomType: string;
-  numPeople: number;
-  roomNumber: string;
-  paymentType: string;
-  anticipoPaid: boolean;
-  comments: string;
+  name: string; employee: string; phone: string; email: string;
+  origin: string; startDate: string; endDate: string;
+  roomType: string; numPeople: number; roomNumber: string;
+  paymentType: string; anticipoPaid: string; comments: string;
 }) {
   const data = await gasGet({
     action: 'addReservation',
-    name: reservation.name,
-    employee: reservation.employee,
-    phone: reservation.phone,
-    email: reservation.email,
+    name: reservation.name, employee: reservation.employee,
+    phone: reservation.phone, email: reservation.email,
     origin: reservation.origin,
-    startDate: reservation.startDate,
-    endDate: reservation.endDate,
+    startDate: reservation.startDate, endDate: reservation.endDate,
     roomType: reservation.roomType,
     numPeople: reservation.numPeople.toString(),
     roomNumber: reservation.roomNumber,
     paymentType: reservation.paymentType,
-    anticipoPaid: reservation.anticipoPaid ? 'true' : 'false',
+    anticipoPaid: reservation.anticipoPaid,
     comments: reservation.comments,
   });
   return data || { error: 'Error de conexion' };
 }
 
 export async function apiUpdateReservation(reservation: {
-  rowIndex: number;
-  name: string;
-  employee: string;
-  phone: string;
-  email: string;
-  origin: string;
-  date: string;
-  roomType: string;
-  numPeople: number;
-  roomNumber: string;
-  paymentType: string;
-  anticipoPaid: boolean;
-  status: string;
-  comments: string;
+  rowIndex: number; name: string; employee: string; phone: string;
+  email: string; origin: string; date: string; roomType: string;
+  numPeople: number; roomNumber: string; paymentType: string;
+  anticipoPaid: string; status: string; comments: string;
 }) {
   const data = await gasGet({
     action: 'updateReservation',
     rowIndex: reservation.rowIndex.toString(),
-    name: reservation.name,
-    employee: reservation.employee,
-    phone: reservation.phone,
-    email: reservation.email,
-    origin: reservation.origin,
-    date: reservation.date,
+    name: reservation.name, employee: reservation.employee,
+    phone: reservation.phone, email: reservation.email,
+    origin: reservation.origin, date: reservation.date,
     roomType: reservation.roomType,
     numPeople: reservation.numPeople.toString(),
     roomNumber: reservation.roomNumber,
     paymentType: reservation.paymentType,
-    anticipoPaid: reservation.anticipoPaid ? 'true' : 'false',
+    anticipoPaid: reservation.anticipoPaid,
     status: reservation.status,
     comments: reservation.comments,
+  });
+  return data || { error: 'Error de conexion' };
+}
+
+// Bulk update status for all rows matching same guest+room+registration
+export async function apiBulkStatusUpdate(params: {
+  name: string; roomNumber: string; registrationDate: string; newStatus: string;
+}) {
+  const data = await gasGet({
+    action: 'bulkStatusUpdate',
+    name: params.name, roomNumber: params.roomNumber,
+    registrationDate: params.registrationDate, newStatus: params.newStatus,
+  });
+  return data || { error: 'Error de conexion' };
+}
+
+// Bulk update payment for all rows matching same guest+room+registration
+export async function apiBulkPaymentUpdate(params: {
+  name: string; roomNumber: string; registrationDate: string; newPaymentType: string;
+}) {
+  const data = await gasGet({
+    action: 'bulkPaymentUpdate',
+    name: params.name, roomNumber: params.roomNumber,
+    registrationDate: params.registrationDate, newPaymentType: params.newPaymentType,
   });
   return data || { error: 'Error de conexion' };
 }
