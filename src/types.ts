@@ -10,7 +10,7 @@ export interface Reservation {
   numPeople: number;
   roomNumber: string;
   paymentType: PaymentType;
-  anticipoPaid: boolean;
+  anticipoPaid: string;
   price: number;
   status: ReservationStatus;
   comments: string;
