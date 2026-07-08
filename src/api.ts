@@ -12,13 +12,18 @@ async function gasGet(params: Record<string, string>) {
   }
 }
 
-export async function apiLogin(password: string): Promise<boolean> {
+export async function apiLogin(password: string): Promise<{ success: boolean; role: string }> {
   const data = await gasGet({ action: 'login', password });
-  return data?.success === true;
+  return data || { success: false, role: '' };
 }
 
 export async function apiGetReservations(startDate: string, endDate: string) {
   const data = await gasGet({ action: 'getReservations', startDate, endDate });
+  return data?.reservations || [];
+}
+
+export async function apiGetAllReservations() {
+  const data = await gasGet({ action: 'getAllReservations' });
   return data?.reservations || [];
 }
 
@@ -67,7 +72,6 @@ export async function apiUpdateReservation(reservation: {
   return data || { error: 'Error de conexion' };
 }
 
-// Bulk update status for all rows matching same guest+room+registration
 export async function apiBulkStatusUpdate(params: {
   name: string; roomNumber: string; registrationDate: string; newStatus: string;
 }) {
@@ -79,7 +83,6 @@ export async function apiBulkStatusUpdate(params: {
   return data || { error: 'Error de conexion' };
 }
 
-// Bulk update payment for all rows matching same guest+room+registration
 export async function apiBulkPaymentUpdate(params: {
   name: string; roomNumber: string; registrationDate: string; newPaymentType: string;
 }) {

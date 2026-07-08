@@ -203,3 +203,44 @@ body { font-family:var(--font-body); background:var(--sand); color:var(--text-pr
 /* ── RESPONSIVE ── */
 @media(max-width:1024px) { .sidebar{width:200px;} .header-center{display:none;} }
 @media(max-width:768px) { .dashboard-body{flex-direction:column;} .sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);} .main-content{padding:10px;} .modal-content{margin:12px;padding:20px;} .form-row-2col{grid-template-columns:1fr;} .detail-grid{grid-template-columns:1fr;} .login-card{margin:16px;padding:32px 24px;} }
+
+/* ── ADMIN DASHBOARD ── */
+.admin-body { padding:20px; overflow-y:auto; max-width:1200px; margin:0 auto; }
+.admin-row { display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+.admin-card { background:white; border-radius:var(--radius-md); padding:20px; flex:1; min-width:260px; border:1px solid var(--border); }
+.admin-card h3 { font-family:var(--font-display); font-size:16px; font-weight:700; color:var(--navy); margin-bottom:14px; }
+.admin-card-wide { flex:2; min-width:400px; }
+.admin-card-full { flex:1 1 100%; }
+.admin-stat-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--sand-dark); font-size:14px; }
+.admin-stat-row:last-child { border-bottom:none; }
+.admin-stat-row span { color:var(--text-secondary); }
+.admin-stat-row strong { color:var(--navy); }
+.text-success { color:var(--success) !important; }
+.text-danger { color:var(--danger) !important; }
+.text-muted { color:var(--text-muted); font-style:italic; font-size:13px; }
+
+/* Admin Table */
+.admin-table-wrap { overflow-x:auto; }
+.admin-table { width:100%; border-collapse:collapse; font-size:13px; }
+.admin-table th { background:var(--sand); padding:8px 12px; text-align:left; font-weight:700; color:var(--navy); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+.admin-table td { padding:7px 12px; border-bottom:1px solid var(--sand-dark); }
+.admin-table tr:hover td { background:var(--sand); }
+
+/* Calendar */
+.cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.cal-header h3 { margin-bottom:0; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.cal-day-label { text-align:center; font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; padding:4px 0; }
+.cal-cell { text-align:center; padding:6px 2px; border-radius:var(--radius-sm); font-size:12px; min-height:38px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; background:var(--sand); }
+.cal-empty { background:transparent; }
+.cal-num { font-weight:600; color:var(--navy); }
+.cal-count { font-size:9px; font-weight:700; color:white; background:var(--success); border-radius:100px; padding:0 5px; min-width:16px; }
+.cal-has-res { background:var(--success-bg); }
+.cal-today { border:2px solid var(--terracotta); }
+.cal-today .cal-num { color:var(--terracotta-dark); }
+
+/* Detail remaining */
+.detail-remaining { color:var(--pago-faltante) !important; font-weight:700 !important; font-size:15px !important; }
+.detail-paid { color:var(--success) !important; font-weight:700 !important; font-size:15px !important; }
+
+@media(max-width:768px) { .admin-row { flex-direction:column; } .admin-card-wide { min-width:auto; } }
