@@ -24,7 +24,7 @@ function weekDays(mon: Date) { return Array.from({ length: 7 }, (_, i) => addDay
 function today() { return fmt(new Date()); }
 
 function parseAnticipo(anticipo: string | boolean, price: number): number {
-  if (!anticipo || anticipo === 'No' || anticipo === 'ninguno' || anticipo === false) return 0;
+  if (!anticipo || anticipo === 'No' || anticipo === 'ninguno' || anticipo === 'false') return 0;
   const s = String(anticipo).trim();
   if (s.includes('%')) {
     const pct = parseFloat(s.replace(/[^0-9.]/g, ''));
