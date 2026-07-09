@@ -83,13 +83,14 @@ export async function apiBulkStatusUpdate(params: {
   return data || { error: 'Error de conexion' };
 }
 
-export async function apiBulkPaymentUpdate(params: {
-  name: string; roomNumber: string; registrationDate: string; newPaymentType: string;
+// Mark whole reservation as paid in full: sets anticipo=full total, payment method, checks in all nights
+export async function apiBulkPaymentComplete(params: {
+  name: string; roomNumber: string; registrationDate: string; method: string;
 }) {
   const data = await gasGet({
-    action: 'bulkPaymentUpdate',
+    action: 'bulkPaymentComplete',
     name: params.name, roomNumber: params.roomNumber,
-    registrationDate: params.registrationDate, newPaymentType: params.newPaymentType,
+    registrationDate: params.registrationDate, method: params.method,
   });
   return data || { error: 'Error de conexion' };
 }

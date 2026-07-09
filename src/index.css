@@ -238,3 +238,14 @@ body{font-family:var(--font-body);background:var(--sand);color:var(--text-primar
 /* RESPONSIVE */
 @media(max-width:1024px){.sidebar{width:220px;}.header-center{display:none;}}
 @media(max-width:768px){.dashboard-body{flex-direction:column;}.sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border);}.main-content{padding:10px;}.modal-content{margin:12px;padding:20px;}.form-row-2col{grid-template-columns:1fr;}.detail-grid{grid-template-columns:1fr;}.login-card{margin:16px;padding:32px 24px;}.admin-row{flex-direction:column;}.admin-card-wide{min-width:auto;}}
+
+/* Form step labels + hints (new reservation flow) */
+.form-step-label{font-size:13px;font-weight:700;color:var(--terracotta-dark);text-transform:uppercase;letter-spacing:.04em;margin:18px 0 10px;padding-bottom:5px;border-bottom:1.5px solid var(--sand-dark);}
+.form-step-label:first-child{margin-top:0;}
+.form-hint{font-size:13px;color:var(--text-muted);font-style:italic;padding:10px 0;text-align:center;}
+
+/* Admin date picker in card head */
+.admin-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;}
+.admin-card-head h3{margin-bottom:0;}
+.admin-date-picker{padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;color:var(--text-primary);cursor:pointer;background:white;}
+.admin-date-picker:focus{outline:none;border-color:var(--terracotta);}
