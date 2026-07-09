@@ -8,7 +8,10 @@ import {
   apiLogin, apiGetReservations, apiAddReservation,
   apiUpdateReservation, apiDeleteReservation,
   apiBulkStatusUpdate, apiBulkPaymentComplete, apiGetAllReservations,
+  apiGetPaymentLog,
 } from './api';
+
+interface PaymentLogEntry { timestamp: string; name: string; room: string; method: string; amount: number; registrationDate: string; }
 
 function getMonday(d: Date): Date {
   const date = new Date(d); const day = date.getDay();
@@ -31,23 +34,21 @@ function parseAnticipo(anticipo: string, totalPrice: number): number {
   return 0;
 }
 
-// Group = all nights of one reservation (same guest + room + registration timestamp)
 function getGroup(r: Reservation, all: Reservation[]): Reservation[] {
   return all.filter(x => x.name === r.name && x.roomNumber === r.roomNumber && x.registrationDate === r.registrationDate);
 }
 function getGroupTotal(r: Reservation, all: Reservation[]): number {
   return getGroup(r, all).reduce((s, x) => s + Number(x.price), 0);
 }
-// Remaining balance across the WHOLE reservation (not per-night)
 function getGroupRemaining(r: Reservation, all: Reservation[]): number {
   const total = getGroupTotal(r, all);
   return Math.max(0, total - parseAnticipo(r.anticipoPaid, total));
 }
-// Color: orange = reserved no anticipo, blue = reserved with partial anticipo, green = checkin or fully paid
+// Green strictly means fully paid. Check-in is shown separately.
 function getResColor(r: Reservation, all: Reservation[]): 'orange' | 'blue' | 'green' {
   const total = getGroupTotal(r, all);
   const remaining = Math.max(0, total - parseAnticipo(r.anticipoPaid, total));
-  if (r.status === 'Check-in' || remaining === 0) return 'green';
+  if (remaining === 0) return 'green';
   if (parseAnticipo(r.anticipoPaid, total) > 0) return 'blue';
   return 'orange';
 }
@@ -80,7 +81,6 @@ function ManagerSidebar({ reservations, selectedDate, onNew }: { reservations: R
   ROOM_TYPES.forEach(rt => (booked[rt] = 0));
   dayRes.forEach(r => { if (booked[r.roomType] !== undefined) booked[r.roomType]++; });
 
-  // Pending payments: unique reservation groups on this day with remaining > 0
   const seen = new Set<string>();
   const pending: { r: Reservation; remaining: number }[] = [];
   dayRes.forEach(r => {
@@ -94,39 +94,28 @@ function ManagerSidebar({ reservations, selectedDate, onNew }: { reservations: R
   return (
     <div className="sidebar">
       <button className="btn-primary btn-full btn-new-sidebar" onClick={onNew}>+ Nueva Reservacion</button>
-
       <div className="sidebar-section">
         <div className="sidebar-section-title">Habitaciones Disponibles <span className="availability-date">{fmtDisp(selectedDate)}</span></div>
         {ROOM_TYPES.map(rt => {
           const avail = TOTAL_ROOMS[rt] - booked[rt];
-          return (
-            <div key={rt} className="sidebar-avail-row">
-              <span className="sidebar-avail-type">{rt}</span>
-              <span className={`sidebar-avail-count ${avail === 0 ? 'full' : ''}`}>{avail === 0 ? 'Lleno' : `${avail} disponible${avail !== 1 ? 's' : ''}`}</span>
-            </div>
-          );
+          return (<div key={rt} className="sidebar-avail-row"><span className="sidebar-avail-type">{rt}</span><span className={`sidebar-avail-count ${avail === 0 ? 'full' : ''}`}>{avail === 0 ? 'Lleno' : `${avail} disponible${avail !== 1 ? 's' : ''}`}</span></div>);
         })}
       </div>
-
       <div className="sidebar-section">
         <div className="sidebar-section-title">Significado de Colores</div>
         <div className="color-legend">
           <div className="legend-item"><span className="legend-dot legend-orange" /><span>Reserva sin anticipo</span></div>
           <div className="legend-item"><span className="legend-dot legend-blue" /><span>Reserva con anticipo</span></div>
-          <div className="legend-item"><span className="legend-dot legend-green" /><span>Check-in / Pagado</span></div>
+          <div className="legend-item"><span className="legend-dot legend-green" /><span>Pagado completo</span></div>
+          <div className="legend-item"><span className="legend-check">✓</span><span>Check-in realizado</span></div>
         </div>
       </div>
-
       {pending.length > 0 && (
         <div className="sidebar-section">
           <div className="sidebar-section-title sidebar-alert">Pagos Pendientes Hoy</div>
           <div className="pending-list">
             {pending.map(({ r, remaining }) => (
-              <div key={r.id} className="pending-item">
-                <span className="pending-name">{r.name}</span>
-                <span className="pending-room">#{r.roomNumber}</span>
-                <span className="pending-amount">{fmtMXN(remaining)}</span>
-              </div>
+              <div key={r.id} className="pending-item"><span className="pending-name">{r.name}</span><span className="pending-room">#{r.roomNumber}</span><span className="pending-amount">{fmtMXN(remaining)}</span></div>
             ))}
           </div>
         </div>
@@ -135,7 +124,7 @@ function ManagerSidebar({ reservations, selectedDate, onNew }: { reservations: R
   );
 }
 
-/* ═══════ NEW RESERVATION MODAL (date first + availability filtering) ═══════ */
+/* ═══════ NEW RESERVATION MODAL ═══════ */
 function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave: (d: any) => void }) {
   const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState('');
   const [name, setName] = useState(''); const [employee, setEmployee] = useState('');
@@ -150,7 +139,6 @@ function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave:
   const [occupiedRooms, setOccupiedRooms] = useState<Set<string>>(new Set());
   const [checkingAvail, setCheckingAvail] = useState(false);
 
-  // When dates change, fetch which rooms are occupied on those nights
   useEffect(() => {
     if (startDate && endDate && endDate > startDate) {
       setCheckingAvail(true);
@@ -159,25 +147,16 @@ function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave:
         const occ = new Set<string>();
         res.forEach(r => { if (r.roomNumber) occ.add(r.roomNumber); });
         setOccupiedRooms(occ);
-        // If currently selected room is now occupied, clear it
         setRoomNumber(prev => (prev && occ.has(prev)) ? '' : prev);
         setCheckingAvail(false);
       }).catch(() => setCheckingAvail(false));
-    } else {
-      setOccupiedRooms(new Set());
-    }
+    } else { setOccupiedRooms(new Set()); }
   }, [startDate, endDate]);
 
   const datesReady = !!(startDate && endDate && endDate > startDate);
-
-  // Available rooms of each type
   const availableByType: Record<string, number> = {};
-  ROOM_TYPES.forEach(rt => {
-    availableByType[rt] = ROOM_MAP.filter(rm => rm.type === rt && !occupiedRooms.has(rm.num.toString())).length;
-  });
-
+  ROOM_TYPES.forEach(rt => { availableByType[rt] = ROOM_MAP.filter(rm => rm.type === rt && !occupiedRooms.has(rm.num.toString())).length; });
   const changeRoomType = (rt: RoomType) => { setRoomType(rt); if (!PEOPLE_OPTIONS[rt].includes(numPeople)) setNumPeople(PEOPLE_OPTIONS[rt][0]); };
-
   let nights = 0;
   if (datesReady) { const s = new Date(startDate + 'T12:00:00'), e = new Date(endDate + 'T12:00:00'); nights = Math.round((e.getTime() - s.getTime()) / 86400000); }
 
@@ -195,15 +174,12 @@ function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave:
     <div className="modal-overlay" onClick={onClose}><div className="modal-content modal-xl" onClick={e => e.stopPropagation()}>
       <div className="modal-header"><h2>Nueva Reservacion</h2><button className="modal-close" onClick={onClose}>✕</button></div>
       <form onSubmit={submit}>
-        {/* STEP 1: dates first */}
         <div className="form-step-label">1. Selecciona las fechas</div>
         <div className="form-row-2col">
           <div className="input-group"><label>Fecha de Entrada</label><input type="date" value={startDate} min={today()} required onChange={e => { setStartDate(e.target.value); if (!endDate || endDate <= e.target.value) { const next = new Date(e.target.value + 'T12:00:00'); next.setDate(next.getDate() + 1); setEndDate(fmt(next)); } }} /></div>
           <div className="input-group"><label>Fecha de Salida</label><input type="date" value={endDate} min={startDate ? fmt(addDays(new Date(startDate + 'T12:00:00'), 1)) : today()} required onChange={e => setEndDate(e.target.value)} /></div>
         </div>
-
         {!datesReady && <div className="form-hint">Selecciona las fechas para ver los cuartos disponibles.</div>}
-
         {datesReady && (
           <>
             {checkingAvail && <div className="form-hint">Verificando disponibilidad...</div>}
@@ -215,12 +191,8 @@ function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave:
             <div className="input-group"><label>Numero de Cuarto</label>
               <select value={roomNumber} onChange={e => { setRoomNumber(e.target.value); const rm = ROOM_MAP.find(r => r.num.toString() === e.target.value); if (rm && rm.type !== roomType) changeRoomType(rm.type); }}>
                 <option value="">Seleccionar cuarto disponible</option>
-                {ROOM_MAP.filter(rm => rm.type === roomType).map(rm => {
-                  const occ = occupiedRooms.has(rm.num.toString());
-                  return <option key={rm.num} value={rm.num.toString()} disabled={occ}>Cuarto {rm.num} ({rm.typeShort}){occ ? ' — Ocupado' : ''}</option>;
-                })}
+                {ROOM_MAP.filter(rm => rm.type === roomType).map(rm => { const occ = occupiedRooms.has(rm.num.toString()); return <option key={rm.num} value={rm.num.toString()} disabled={occ}>Cuarto {rm.num} ({rm.typeShort}){occ ? ' — Ocupado' : ''}</option>; })}
               </select></div>
-
             <div className="form-step-label">3. Datos del huesped</div>
             <div className="input-group"><label>Nombre del Solicitante</label><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nombre completo" required /></div>
             <div className="input-group"><label>Nombre del Empleado</label><input type="text" value={employee} onChange={e => setEmployee(e.target.value)} placeholder="Nombre del empleado" required /></div>
@@ -234,7 +206,6 @@ function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave:
             <div className="reservation-preview"><span>{nights} noche{nights !== 1 ? 's' : ''} x {fmtMXN(ROOM_PRICES[roomType])}</span><span className="preview-price">{fmtMXN(nights * ROOM_PRICES[roomType])}</span></div>
           </>
         )}
-
         <div className="modal-actions"><button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn-primary" disabled={saving || !datesReady || !name.trim() || !employee.trim() || !roomNumber}>{saving ? 'Guardando...' : 'Guardar Reservacion'}</button></div>
       </form></div></div>
   );
@@ -276,7 +247,7 @@ function EditReservationModal({ onClose, onSave, initial }: { onClose: () => voi
   );
 }
 
-/* ═══════ DETAIL MODAL (only Registrar Pago Completo, shows group remaining) ═══════ */
+/* ═══════ DETAIL MODAL (check-in gated on full payment) ═══════ */
 function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymentComplete }: {
   r: Reservation; allWeek: Reservation[]; onClose: () => void; onEdit: () => void; onDelete: () => void;
   onStatus: (s: ReservationStatus) => void; onPaymentComplete: (method: 'Tarjeta' | 'Efectivo') => void;
@@ -287,13 +258,15 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
   const total = getGroupTotal(r, allWeek);
   const nights = getGroup(r, allWeek).length;
   const remaining = getGroupRemaining(r, allWeek);
+  const checkInBlocked = next === 'Check-in' && remaining > 0;
   return (
     <div className="modal-overlay" onClick={onClose}><div className="modal-content" onClick={e => e.stopPropagation()}>
       <div className="modal-header"><h2>Detalle de Reservacion</h2><button className="modal-close" onClick={onClose}>✕</button></div>
       <div className="detail-status-row">
-        <div className={`detail-status-badge status-${r.status.toLowerCase().replace('-', '')}`}>{r.status}</div>
-        <button className="btn-status-toggle" disabled={busy1} onClick={async () => { setBusy1(true); await onStatus(next); setBusy1(false); }}>{busy1 ? 'Cambiando...' : `Cambiar a ${next}`}</button>
+        <div className={`detail-status-badge status-${r.status.toLowerCase().replace('-', '')}`}>{r.status === 'Check-in' ? '✓ Check-in' : r.status}</div>
+        <button className="btn-status-toggle" disabled={busy1 || checkInBlocked} title={checkInBlocked ? 'Completa el pago para hacer check-in' : ''} onClick={async () => { setBusy1(true); await onStatus(next); setBusy1(false); }}>{busy1 ? 'Cambiando...' : `Cambiar a ${next}`}</button>
       </div>
+      {checkInBlocked && <div className="checkin-warning">Para hacer check-in, primero completa el pago de la reservacion.</div>}
       <div className="detail-grid">
         <div className="detail-row"><span className="detail-label">Nombre</span><span className="detail-value">{r.name}</span></div>
         <div className="detail-row"><span className="detail-label">Empleado</span><span className="detail-value">{r.employee}</span></div>
@@ -310,11 +283,7 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
         <div className="detail-row"><span className="detail-label">Restante por cobrar</span><span className={`detail-value ${remaining > 0 ? 'detail-remaining' : 'detail-paid'}`}>{remaining > 0 ? fmtMXN(remaining) : 'Pagado'}</span></div>
         <div className="detail-row full-width"><span className="detail-label">Comentarios</span><span className="detail-value">{r.comments || 'Sin comentarios'}</span></div>
       </div>
-
-      <div className="detail-payment-row">
-        <span className="detail-label">Metodo de Pago: <strong>{r.paymentType}</strong></span>
-      </div>
-
+      <div className="detail-payment-row"><span className="detail-label">Metodo de Pago: <strong>{r.paymentType}</strong></span></div>
       {remaining > 0 && (
         <div className="payment-complete-section">
           {!showPayOptions ? (
@@ -331,13 +300,12 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
           )}
         </div>
       )}
-
       <div className="modal-actions"><button className="btn-danger" onClick={onDelete}>Eliminar</button><button className="btn-primary" onClick={onEdit}>Editar</button></div>
     </div></div>
   );
 }
 
-/* ═══════ WEEK VIEW ═══════ */
+/* ═══════ WEEK VIEW (check-in badge on cells) ═══════ */
 function WeekView({ reservations, weekStart, onWeekChange, onSelectDate, selectedDate, onClick, onJump }: {
   reservations: Reservation[]; weekStart: Date; onWeekChange: (d: number) => void;
   onSelectDate: (d: string) => void; selectedDate: string;
@@ -374,9 +342,10 @@ function WeekView({ reservations, weekStart, onWeekChange, onSelectDate, selecte
                 const res = map[rm.num.toString()];
                 if (res) {
                   const color = getResColor(res, reservations);
+                  const checkedIn = res.status === 'Check-in';
                   return (
                     <div key={rm.num} className={`room-cell occupied res-color-${color}`} onClick={e => { e.stopPropagation(); onClick(res); }}>
-                      <div className="room-cell-top"><span className="room-cell-num">{rm.num}</span></div>
+                      <div className="room-cell-top"><span className="room-cell-num">{rm.num}</span>{checkedIn && <span className="checkin-badge" title="Check-in realizado">✓</span>}</div>
                       <span className="room-cell-name">{res.name}</span>
                     </div>);
                 }
@@ -407,8 +376,6 @@ function ManagerDashboard({ onLogout }: { onLogout: () => void }) {
   const handleUpdate = async (data: any) => { if (!edit?.rowIndex) return; const r = await apiUpdateReservation({ ...data, rowIndex: edit.rowIndex }); if (r.success) { flash('Actualizada'); setEdit(null); load(); } else flash(r.error || 'Error', 'error'); };
   const handleDelete = async (r: Reservation) => { if (!confirm(`Eliminar reservacion de ${r.name}?`)) return; if (!r.rowIndex) return; const res = await apiDeleteReservation(r.rowIndex); if (res.success) { flash('Eliminada'); setDetail(null); load(); } else flash('Error', 'error'); };
   const bulkStatus = async (r: Reservation, ns: ReservationStatus) => { const res = await apiBulkStatusUpdate({ name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate, newStatus: ns }); if (res.success) { flash(`${ns} aplicado`); setDetail(null); load(); } else flash('Error', 'error'); };
-
-  // Payment complete: backend sets anticipo=full total + method + check-in on ALL nights
   const handlePaymentComplete = async (r: Reservation, method: 'Tarjeta' | 'Efectivo') => {
     const res = await apiBulkPaymentComplete({ name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate, method });
     if (res.success) { flash(`Pago completo registrado (${method})`); setDetail(null); load(); }
@@ -441,25 +408,26 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [allRes, setAllRes] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(today());
+  const [payLog, setPayLog] = useState<PaymentLogEntry[]>([]);
   const [viewMonth, setViewMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
 
   useEffect(() => { (async () => { setLoading(true); setAllRes(await apiGetAllReservations()); setLoading(false); })(); }, []);
+  useEffect(() => { (async () => { setPayLog(await apiGetPaymentLog(selectedDay)); })(); }, [selectedDay]);
 
   if (loading) return (
     <div className="dashboard"><header className="dashboard-header"><div className="header-left"><h1 className="app-title"><span className="title-icon">🏨</span> Hotel Ancira — Admin</h1></div><div className="header-right"><button className="btn-ghost" onClick={onLogout}>Salir</button></div></header>
       <div className="loading-state"><div className="spinner" /><p>Cargando datos...</p></div></div>
   );
 
-  // Selected day stats
   const dayRes = allRes.filter(r => r.date === selectedDay);
   const dayTotal = dayRes.reduce((s, r) => s + r.price, 0);
   const dayTarjeta = dayRes.filter(r => r.paymentType === 'Tarjeta').reduce((s, r) => s + r.price, 0);
   const dayEfectivo = dayRes.filter(r => r.paymentType === 'Efectivo').reduce((s, r) => s + r.price, 0);
-  const dayPending = (() => {
-    const seen = new Set<string>(); let sum = 0;
-    dayRes.forEach(r => { const k = `${r.name}||${r.roomNumber}||${r.registrationDate}`; if (seen.has(k)) return; seen.add(k); sum += getGroupRemaining(r, allRes); });
-    return sum;
-  })();
+  const dayPending = (() => { const seen = new Set<string>(); let sum = 0; dayRes.forEach(r => { const k = `${r.name}||${r.roomNumber}||${r.registrationDate}`; if (seen.has(k)) return; seen.add(k); sum += getGroupRemaining(r, allRes); }); return sum; })();
+
+  // Payment activity totals for selected day
+  const payTarjeta = payLog.filter(p => p.method === 'Tarjeta').reduce((s, p) => s + p.amount, 0);
+  const payEfectivo = payLog.filter(p => p.method === 'Efectivo').reduce((s, p) => s + p.amount, 0);
 
   const mon = getMonday(new Date()); const sun = addDays(mon, 6);
   const weekRes = allRes.filter(r => r.date >= fmt(mon) && r.date <= fmt(sun));
@@ -475,6 +443,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   allRes.forEach(r => { if (r.roomNumber) roomCounts[r.roomNumber] = (roomCounts[r.roomNumber] || 0) + 1; });
   const topRooms = Object.entries(roomCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
+  // Reservation groups touching this month (accurate totals across full stay)
+  const groupsMap: Record<string, { name: string; room: string; dates: string[]; total: number; anticipo: string; status: string; payment: string }> = {};
+  allRes.forEach(r => {
+    const key = `${r.name}||${r.roomNumber}||${r.registrationDate}`;
+    if (!groupsMap[key]) groupsMap[key] = { name: r.name, room: r.roomNumber, dates: [], total: 0, anticipo: r.anticipoPaid, status: r.status, payment: r.paymentType };
+    groupsMap[key].dates.push(r.date);
+    groupsMap[key].total += Number(r.price);
+    if (r.status === 'Check-in') groupsMap[key].status = 'Check-in';
+  });
+  const monthGroups = Object.values(groupsMap).filter(g => g.dates.some(d => d.startsWith(monthStr)))
+    .map(g => { const paid = parseAnticipo(g.anticipo, g.total); return { ...g, paid, remaining: Math.max(0, g.total - paid), start: g.dates.slice().sort()[0], end: g.dates.slice().sort()[g.dates.length - 1] }; })
+    .sort((a, b) => a.start.localeCompare(b.start));
+
   const calFirst = new Date(viewMonth.year, viewMonth.month, 1);
   const calLast = new Date(viewMonth.year, viewMonth.month + 1, 0);
   const startDay = calFirst.getDay(); const daysInMonth = calLast.getDate();
@@ -482,10 +463,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   monthRes.forEach(r => { resByDate[r.date] = (resByDate[r.date] || 0) + 1; });
   const calCells: ({ day: number; count: number; date: string } | null)[] = [];
   for (let i = 0; i < startDay; i++) calCells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    const ds = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    calCells.push({ day: d, count: resByDate[ds] || 0, date: ds });
-  }
+  for (let d = 1; d <= daysInMonth; d++) { const ds = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`; calCells.push({ day: d, count: resByDate[ds] || 0, date: ds }); }
 
   return (
     <div className="dashboard">
@@ -493,10 +471,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div className="admin-body">
         <div className="admin-row">
           <div className="admin-card">
-            <div className="admin-card-head">
-              <h3>Dia Seleccionado</h3>
-              <input type="date" className="admin-date-picker" value={selectedDay} onChange={e => { if (e.target.value) setSelectedDay(e.target.value); }} />
-            </div>
+            <div className="admin-card-head"><h3>Dia Seleccionado</h3><input type="date" className="admin-date-picker" value={selectedDay} onChange={e => { if (e.target.value) setSelectedDay(e.target.value); }} /></div>
             <div className="admin-stat-row"><span>Reservaciones</span><strong>{dayRes.length}</strong></div>
             <div className="admin-stat-row"><span>Total</span><strong className="text-success">{fmtMXN(dayTotal)}</strong></div>
             <div className="admin-stat-row"><span>Tarjeta</span><strong>{fmtMXN(dayTarjeta)}</strong></div>
@@ -513,12 +488,33 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           <div className="admin-card">
             <h3>Cuartos Mas Reservados</h3>
             {topRooms.length === 0 ? <p className="text-muted">Sin datos</p> :
-              topRooms.map(([room, count]) => {
-                const rm = ROOM_MAP.find(r => r.num.toString() === room);
-                return (<div key={room} className="admin-stat-row"><span>Cuarto {room} {rm ? `(${rm.typeShort})` : ''}</span><strong>{count} noches</strong></div>);
-              })}
+              topRooms.map(([room, count]) => { const rm = ROOM_MAP.find(r => r.num.toString() === room); return (<div key={room} className="admin-stat-row"><span>Cuarto {room} {rm ? `(${rm.typeShort})` : ''}</span><strong>{count} noches</strong></div>); })}
           </div>
         </div>
+
+        {/* Payment activity for selected day */}
+        <div className="admin-row">
+          <div className="admin-card admin-card-full">
+            <div className="admin-card-head"><h3>Actividad de Pagos Completados — {fmtDisp(selectedDay)}</h3></div>
+            <p className="admin-sub">Pagos restantes registrados por el gerente en esta fecha (dinero recibido en caja).</p>
+            {payLog.length === 0 ? <p className="text-muted">No se registraron pagos completos este dia.</p> : (
+              <>
+                <div className="admin-table-wrap"><table className="admin-table">
+                  <thead><tr><th>Hora</th><th>Reservacion</th><th>Cuarto</th><th>Metodo</th><th>Monto Cobrado</th></tr></thead>
+                  <tbody>{payLog.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map((p, i) => (
+                    <tr key={i}><td>{p.timestamp.substring(11, 16)}</td><td>{p.name}</td><td>{p.room}</td><td><span className={`pay-method-tag ${p.method.toLowerCase()}`}>{p.method}</span></td><td className="text-success"><strong>{fmtMXN(p.amount)}</strong></td></tr>
+                  ))}</tbody>
+                </table></div>
+                <div className="pay-totals">
+                  <div className="pay-total-box tarjeta"><span>Total Tarjeta</span><strong>{fmtMXN(payTarjeta)}</strong></div>
+                  <div className="pay-total-box efectivo"><span>Total Efectivo</span><strong>{fmtMXN(payEfectivo)}</strong></div>
+                  <div className="pay-total-box grand"><span>Total Recibido</span><strong>{fmtMXN(payTarjeta + payEfectivo)}</strong></div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
         <div className="admin-row">
           <div className="admin-card"><h3>{MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3>
             <div className="admin-stat-row"><span>Total Reservaciones</span><strong>{monthRes.length}</strong></div>
@@ -532,31 +528,31 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <div className="cal-grid">
               {['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'].map(d => <div key={d} className="cal-day-label">{d}</div>)}
-              {calCells.map((cell, i) => {
-                if (!cell) return <div key={`e${i}`} className="cal-cell cal-empty" />;
-                return (<div key={cell.date} className={`cal-cell ${cell.count > 0 ? 'cal-has-res' : ''} ${cell.date === today() ? 'cal-today' : ''}`}>
-                  <span className="cal-num">{cell.day}</span>{cell.count > 0 && <span className="cal-count">{cell.count}</span>}</div>);
-              })}
+              {calCells.map((cell, i) => { if (!cell) return <div key={`e${i}`} className="cal-cell cal-empty" />; return (<div key={cell.date} className={`cal-cell ${cell.count > 0 ? 'cal-has-res' : ''} ${cell.date === today() ? 'cal-today' : ''}`}><span className="cal-num">{cell.day}</span>{cell.count > 0 && <span className="cal-count">{cell.count}</span>}</div>); })}
             </div>
           </div>
         </div>
+
+        {/* Desglose by reservation */}
         <div className="admin-row">
           <div className="admin-card admin-card-full">
-            <h3>Desglose Diario — {MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3>
-            <div className="admin-table-wrap"><table className="admin-table">
-              <thead><tr><th>Fecha</th><th>Res.</th><th>Tarjeta</th><th>Efectivo</th><th>Pendiente</th><th>Total</th></tr></thead>
-              <tbody>{Array.from({ length: daysInMonth }, (_, i) => {
-                const ds = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`;
-                const dRes = allRes.filter(r => r.date === ds);
-                if (dRes.length === 0) return null;
-                const dTarj = dRes.filter(r => r.paymentType === 'Tarjeta').reduce((s, r) => s + r.price, 0);
-                const dEfec = dRes.filter(r => r.paymentType === 'Efectivo').reduce((s, r) => s + r.price, 0);
-                const seen = new Set<string>(); let dPend = 0;
-                dRes.forEach(r => { const k = `${r.name}||${r.roomNumber}||${r.registrationDate}`; if (seen.has(k)) return; seen.add(k); dPend += getGroupRemaining(r, allRes); });
-                const dTotal = dRes.reduce((s, r) => s + r.price, 0);
-                return (<tr key={ds}><td>{fmtDisp(ds)}</td><td>{dRes.length}</td><td>{fmtMXN(dTarj)}</td><td>{fmtMXN(dEfec)}</td><td className="text-danger">{fmtMXN(dPend)}</td><td className="text-success"><strong>{fmtMXN(dTotal)}</strong></td></tr>);
-              })}</tbody>
-            </table></div>
+            <h3>Desglose por Reservacion — {MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3>
+            {monthGroups.length === 0 ? <p className="text-muted">Sin reservaciones este mes.</p> : (
+              <div className="admin-table-wrap"><table className="admin-table">
+                <thead><tr><th>Reservacion</th><th>Cuarto</th><th>Fechas</th><th>Noches</th><th>Total</th><th>Pagado</th><th>Restante</th><th>Estado</th></tr></thead>
+                <tbody>{monthGroups.map((g, i) => (
+                  <tr key={i} className={g.remaining > 0 ? 'row-unpaid' : ''}>
+                    <td>{g.name}</td><td>{g.room}</td>
+                    <td>{fmtDisp(g.start)}{g.dates.length > 1 ? ` → ${fmtDisp(g.end)}` : ''}</td>
+                    <td>{g.dates.length}</td>
+                    <td>{fmtMXN(g.total)}</td>
+                    <td>{fmtMXN(g.paid)}</td>
+                    <td className={g.remaining > 0 ? 'text-danger' : 'text-success'}><strong>{g.remaining > 0 ? fmtMXN(g.remaining) : 'Pagado'}</strong></td>
+                    <td>{g.status === 'Check-in' ? <span className="status-chip checkin">✓ Check-in</span> : <span className="status-chip reserva">Reserva</span>}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
           </div>
         </div>
       </div>

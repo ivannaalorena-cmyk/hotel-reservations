@@ -99,3 +99,8 @@ export async function apiDeleteReservation(rowIndex: number) {
   const data = await gasGet({ action: 'deleteReservation', rowIndex: rowIndex.toString() });
   return data || { error: 'Error de conexion' };
 }
+
+export async function apiGetPaymentLog(date: string) {
+  const data = await gasGet({ action: 'getPaymentLog', date });
+  return data?.payments || [];
+}
