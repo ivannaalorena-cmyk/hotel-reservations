@@ -176,8 +176,8 @@ function NewReservationModal({ onClose, onSave }: { onClose: () => void; onSave:
       <form onSubmit={submit}>
         <div className="form-step-label">1. Selecciona las fechas</div>
         <div className="form-row-2col">
-          <div className="input-group"><label>Fecha de Entrada</label><input type="date" value={startDate} min={today()} required onChange={e => { setStartDate(e.target.value); if (!endDate || endDate <= e.target.value) { const next = new Date(e.target.value + 'T12:00:00'); next.setDate(next.getDate() + 1); setEndDate(fmt(next)); } }} /></div>
-          <div className="input-group"><label>Fecha de Salida</label><input type="date" value={endDate} min={startDate ? fmt(addDays(new Date(startDate + 'T12:00:00'), 1)) : today()} required onChange={e => setEndDate(e.target.value)} /></div>
+          <div className="input-group"><label>Fecha de Entrada</label><input type="date" value={startDate} required onChange={e => { setStartDate(e.target.value); if (!endDate || endDate <= e.target.value) { const next = new Date(e.target.value + 'T12:00:00'); next.setDate(next.getDate() + 1); setEndDate(fmt(next)); } }} /></div>
+          <div className="input-group"><label>Fecha de Salida</label><input type="date" value={endDate} min={startDate ? fmt(addDays(new Date(startDate + 'T12:00:00'), 1)) : ''} required onChange={e => setEndDate(e.target.value)} /></div>
         </div>
         {!datesReady && <div className="form-hint">Selecciona las fechas para ver los cuartos disponibles.</div>}
         {datesReady && (
