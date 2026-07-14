@@ -275,3 +275,80 @@ body{font-family:var(--font-body);background:var(--sand);color:var(--text-primar
 .status-chip{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;}
 .status-chip.checkin{background:var(--success-bg);color:var(--success);}
 .status-chip.reserva{background:rgba(252,176,1,.15);color:#b8860b;}
+
+/* Report button */
+.btn-report{padding:10px;background:white;color:var(--navy);border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;font-weight:600;cursor:pointer;}
+.btn-report:hover{background:var(--sand);border-color:var(--terracotta);}
+
+/* Multi-room slots */
+.room-slot-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.room-slot-row select{flex:1;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:15px;background:white;}
+.btn-remove-room{width:36px;height:38px;flex-shrink:0;background:var(--danger-bg);color:var(--danger);border:1.5px solid var(--danger);border-radius:var(--radius-sm);cursor:pointer;font-weight:700;}
+.btn-add-room{width:100%;padding:10px;background:var(--sand);border:1.5px dashed var(--navy-light);border-radius:var(--radius-sm);color:var(--navy);font-family:var(--font-body);font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px;}
+.btn-add-room:hover{background:var(--sand-dark);}
+
+/* Welcome back */
+.welcome-back{background:linear-gradient(90deg,rgba(252,176,1,.18),rgba(252,176,1,.05));border:1.5px solid var(--terracotta);color:var(--navy);font-weight:700;font-size:14px;padding:10px 14px;border-radius:var(--radius-sm);margin-bottom:14px;}
+
+/* Paid in full toggle */
+.paid-full-toggle{background:var(--success-bg);border:1.5px solid var(--success);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;}
+.paid-full-toggle .checkbox-label{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:var(--navy);}
+.paid-full-toggle input[type=checkbox]{width:18px;height:18px;accent-color:var(--success);cursor:pointer;flex-shrink:0;}
+
+/* Blocked room cell */
+.room-cell.blocked{background:repeating-linear-gradient(45deg,#f0ebe3,#f0ebe3 6px,#e2d5c3 6px,#e2d5c3 12px);border:1px solid var(--border);flex-direction:row;justify-content:space-between;align-items:center;}
+.room-cell.blocked .room-cell-num{color:var(--text-muted);font-weight:600;}
+.room-cell-block{font-size:11px;}
+
+/* Check-in badge */
+.checkin-badge{font-size:11px;font-weight:800;color:#fff;background:var(--success);border-radius:50%;width:15px;height:15px;display:flex;align-items:center;justify-content:center;line-height:1;flex-shrink:0;}
+.legend-check{font-size:13px;font-weight:800;color:var(--success);width:14px;text-align:center;flex-shrink:0;}
+.checkin-warning{background:var(--pago-faltante-bg);border:1px solid var(--pago-faltante);color:var(--pago-faltante);font-size:12px;font-weight:600;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:14px;}
+
+/* Payment activity */
+.admin-sub{font-size:13px;color:var(--text-muted);margin-bottom:14px;}
+.pay-method-tag{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;}
+.pay-method-tag.tarjeta{background:#ebf4ff;color:#3182ce;}
+.pay-method-tag.efectivo{background:var(--success-bg);color:var(--success);}
+.pay-totals{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;}
+.pay-total-box{flex:1;min-width:140px;padding:14px 16px;border-radius:var(--radius-md);display:flex;flex-direction:column;gap:4px;}
+.pay-total-box span{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;opacity:.8;}
+.pay-total-box strong{font-size:20px;}
+.pay-total-box.tarjeta{background:#ebf4ff;color:#3182ce;}
+.pay-total-box.efectivo{background:var(--success-bg);color:var(--success);}
+.pay-total-box.grand{background:var(--navy);color:white;}
+.row-unpaid{background:rgba(232,93,4,.04);}
+.status-chip{display:inline-block;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;}
+.status-chip.checkin{background:var(--success-bg);color:var(--success);}
+.status-chip.reserva{background:rgba(252,176,1,.15);color:#b8860b;}
+
+/* Admin tabs */
+.admin-tabs{display:flex;gap:4px;background:var(--sand);padding:4px;border-radius:100px;}
+.admin-tab{padding:8px 20px;background:none;border:none;border-radius:100px;font-family:var(--font-body);font-size:14px;font-weight:600;color:var(--text-secondary);cursor:pointer;transition:all .2s;}
+.admin-tab.active{background:var(--navy);color:white;}
+
+/* Admin settings */
+.btn-mini{padding:5px 12px;background:white;color:var(--navy);border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer;}
+.btn-mini:hover{background:var(--sand);border-color:var(--terracotta);}
+.btn-mini.danger{color:var(--danger);border-color:var(--danger);}
+.btn-mini.danger:hover{background:var(--danger-bg);}
+.price-edit-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--sand-dark);gap:12px;flex-wrap:wrap;}
+.price-type{font-weight:600;color:var(--navy);font-size:14px;}
+.price-edit-controls{display:flex;align-items:center;gap:10px;}
+.price-current{font-size:13px;color:var(--text-muted);}
+.price-input{width:100px;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;}
+.rooms-grid-admin{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px;}
+.room-admin-card{background:var(--sand);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;}
+.room-admin-card.blocked{background:var(--pago-faltante-bg);border-color:var(--pago-faltante);}
+.room-admin-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.room-admin-num{font-weight:700;font-size:16px;color:var(--navy);}
+.room-admin-type{font-size:11px;color:var(--text-muted);font-weight:600;}
+.room-admin-reason{font-size:10px;color:var(--pago-faltante);margin-bottom:6px;font-weight:600;}
+.room-admin-actions{display:flex;gap:5px;}
+.room-admin-actions .btn-mini{padding:4px 8px;font-size:11px;flex:1;}
+.block-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--pago-faltante-bg);padding:12px;border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px;font-weight:600;}
+.block-form input{flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;}
+.resolved-details{margin-top:12px;}
+.resolved-details summary{cursor:pointer;font-size:13px;color:var(--text-muted);font-weight:600;}
+.resolved-row{opacity:.6;}
+code{background:var(--sand-dark);padding:2px 8px;border-radius:4px;font-family:monospace;font-size:13px;font-weight:700;color:var(--navy);}
