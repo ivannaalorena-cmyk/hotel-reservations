@@ -352,3 +352,33 @@ body{font-family:var(--font-body);background:var(--sand);color:var(--text-primar
 .resolved-details summary{cursor:pointer;font-size:13px;color:var(--text-muted);font-weight:600;}
 .resolved-row{opacity:.6;}
 code{background:var(--sand-dark);padding:2px 8px;border-radius:4px;font-family:monospace;font-size:13px;font-weight:700;color:var(--navy);}
+
+/* v8: purple municipio, factura, special price, type-before-number */
+.res-color-purple{background:#6b46c1 !important;border-color:#553c9a !important;}
+.res-color-purple .room-cell-num,.res-color-purple .room-cell-name{color:#fff !important;}
+.legend-dot.legend-purple{background:#6b46c1;}
+
+.room-slot-row2{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.room-slot-row2 .slot-type{flex:2;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;background:white;}
+.room-slot-row2 .slot-num{flex:1;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;background:white;min-width:90px;}
+
+.pricing-box{background:var(--sand);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:12px;}
+.pricing-box .checkbox-label{display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;color:var(--navy);line-height:1.4;}
+.pricing-box input[type=checkbox]{width:17px;height:17px;accent-color:var(--terracotta);cursor:pointer;flex-shrink:0;margin-top:1px;}
+.pricing-box .municipio-label input[type=checkbox]{accent-color:#6b46c1;}
+.special-controls{padding-left:27px;display:flex;flex-direction:column;gap:8px;margin-top:-4px;}
+.special-row{display:flex;gap:8px;}
+.special-input{flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;}
+.currency-sel{width:90px;padding:9px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:14px;background:white;}
+.rate-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap;}
+.rate-input{width:90px;padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;}
+.rate-preview{font-size:13px;font-weight:700;color:var(--navy);background:white;padding:6px 10px;border-radius:var(--radius-sm);display:inline-block;}
+
+.detail-badges{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.tag-municipio{background:#6b46c1;color:white;font-size:11px;font-weight:700;padding:3px 12px;border-radius:100px;}
+.tag-factura{background:#ebf4ff;color:#3182ce;font-size:11px;font-weight:700;padding:3px 12px;border-radius:100px;}
+.municipio-note{background:#f3effc;border:1px solid #6b46c1;color:#553c9a;font-size:12px;font-weight:600;padding:10px 12px;border-radius:var(--radius-sm);margin-top:12px;}
+
+.municipio-card{border-top:3px solid #6b46c1;}
+.municipio-summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:13px;color:var(--text-secondary);flex-wrap:wrap;gap:8px;}
+.muni-pending{font-weight:700;color:#6b46c1;}

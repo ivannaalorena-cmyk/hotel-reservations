@@ -17,6 +17,8 @@ export interface Reservation {
   registrationDate: string;
   checkout: string;
   reservationId: string;
+  municipio: boolean;
+  factura: boolean;
   rowIndex?: number;
 }
 
@@ -86,3 +88,5 @@ export interface MaintenanceItem { id: string; timestamp: string; room: string; 
 export interface UserAccess { password: string; role: string; label: string; lastUsed: string; }
 
 export const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+
+export const DEFAULT_USD_RATE = 18.5;

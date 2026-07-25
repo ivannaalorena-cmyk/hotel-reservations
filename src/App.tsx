@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Reservation, RoomType, PaymentType, ReservationStatus, RoomDef, MaintenanceItem, UserAccess,
-  ROOM_TYPES, PAYMENT_TYPES, STATUSES, PEOPLE_OPTIONS, DEFAULT_ROOMS, DEFAULT_PRICES, DAY_NAMES,
+  ROOM_TYPES, PAYMENT_TYPES, STATUSES, PEOPLE_OPTIONS, DEFAULT_ROOMS, DEFAULT_PRICES, DEFAULT_USD_RATE, DAY_NAMES,
 } from './types';
 import {
   apiLogin, apiGetConfig, apiGetReservations, apiAddReservation, apiUpdateReservation,
   apiDeleteReservation, apiBulkStatusUpdate, apiBulkPaymentComplete, apiGetAllReservations,
   apiGetPaymentLog, apiGetMaintenance, apiAddMaintenance, apiResolveMaintenance,
-  apiUpdatePrice, apiAddRoom, apiDeleteRoom, apiBlockRoom, apiGetUsers,
+  apiUpdatePrice, apiAddRoom, apiDeleteRoom, apiBlockRoom, apiGetUsers, apiMarkPaid,
 } from './api';
 
 interface PaymentLogEntry { timestamp: string; name: string; room: string; method: string; amount: number; registrationDate: string; }
@@ -34,7 +34,8 @@ function groupKey(r: Reservation): string { return r.reservationId ? 'RID:' + r.
 function getGroup(r: Reservation, all: Reservation[]): Reservation[] { const k = groupKey(r); return all.filter(x => groupKey(x) === k); }
 function getGroupTotal(r: Reservation, all: Reservation[]): number { return getGroup(r, all).reduce((s, x) => s + Number(x.price), 0); }
 function getGroupRemaining(r: Reservation, all: Reservation[]): number { const t = getGroupTotal(r, all); return Math.max(0, t - parseAnticipo(r.anticipoPaid, t)); }
-function getResColor(r: Reservation, all: Reservation[]): 'orange' | 'blue' | 'green' {
+function getResColor(r: Reservation, all: Reservation[]): 'orange' | 'blue' | 'green' | 'purple' {
+  if (r.municipio) return 'purple';
   const t = getGroupTotal(r, all); const remaining = Math.max(0, t - parseAnticipo(r.anticipoPaid, t));
   if (remaining === 0) return 'green';
   if (parseAnticipo(r.anticipoPaid, t) > 0) return 'blue';
@@ -42,7 +43,7 @@ function getResColor(r: Reservation, all: Reservation[]): 'orange' | 'blue' | 'g
 }
 const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-/* ═══════ LOGIN ═══════ */
+/* LOGIN */
 function LoginScreen({ onLogin }: { onLogin: (role: string) => void }) {
   const [pw, setPw] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
@@ -61,7 +62,7 @@ function LoginScreen({ onLogin }: { onLogin: (role: string) => void }) {
   );
 }
 
-/* ═══════ MANAGER SIDEBAR ═══════ */
+/* MANAGER SIDEBAR */
 function ManagerSidebar({ reservations, rooms, selectedDate, onNew, onReport }: { reservations: Reservation[]; rooms: RoomDef[]; selectedDate: string; onNew: () => void; onReport: () => void }) {
   const dayRes = reservations.filter(r => r.date === selectedDate);
   const totalByType: Record<string, number> = {};
@@ -72,7 +73,7 @@ function ManagerSidebar({ reservations, rooms, selectedDate, onNew, onReport }: 
 
   const seen = new Set<string>();
   const pending: { r: Reservation; remaining: number }[] = [];
-  dayRes.forEach(r => { const k = groupKey(r); if (seen.has(k)) return; seen.add(k); const rem = getGroupRemaining(r, reservations); if (rem > 0) pending.push({ r, remaining: rem }); });
+  dayRes.forEach(r => { const k = groupKey(r); if (seen.has(k)) return; seen.add(k); if (r.municipio) return; const rem = getGroupRemaining(r, reservations); if (rem > 0) pending.push({ r, remaining: rem }); });
 
   return (
     <div className="sidebar">
@@ -88,6 +89,7 @@ function ManagerSidebar({ reservations, rooms, selectedDate, onNew, onReport }: 
           <div className="legend-item"><span className="legend-dot legend-orange" /><span>Reserva sin anticipo</span></div>
           <div className="legend-item"><span className="legend-dot legend-blue" /><span>Reserva con anticipo</span></div>
           <div className="legend-item"><span className="legend-dot legend-green" /><span>Pagado completo</span></div>
+          <div className="legend-item"><span className="legend-dot legend-purple" /><span>Municipio (gobierno)</span></div>
           <div className="legend-item"><span className="legend-check">✓</span><span>Check-in realizado</span></div>
         </div>
       </div>
@@ -101,7 +103,7 @@ function ManagerSidebar({ reservations, rooms, selectedDate, onNew, onReport }: 
   );
 }
 
-/* ═══════ REPORT MAINTENANCE MODAL ═══════ */
+/* REPORT MAINTENANCE MODAL */
 function ReportModal({ rooms, onClose, onSave }: { rooms: RoomDef[]; onClose: () => void; onSave: (room: string, desc: string) => void }) {
   const [room, setRoom] = useState(''); const [desc, setDesc] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async (e: React.FormEvent) => { e.preventDefault(); if (!desc.trim()) return; setSaving(true); await onSave(room, desc.trim()); setSaving(false); };
@@ -116,19 +118,26 @@ function ReportModal({ rooms, onClose, onSave }: { rooms: RoomDef[]; onClose: ()
   );
 }
 
-/* ═══════ NEW RESERVATION MODAL ═══════ */
-function NewReservationModal({ config, allGuests, onClose, onSave }: { config: Config; allGuests: { name: string; phone: string }[]; onClose: () => void; onSave: (d: any) => void }) {
+/* NEW RESERVATION MODAL */
+interface RoomSlot { type: RoomType; num: string; }
+function NewReservationModal({ config, onClose, onSave }: { config: Config; onClose: () => void; onSave: (d: any) => void }) {
   const { rooms, prices } = config;
   const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState('');
   const [name, setName] = useState(''); const [employee, setEmployee] = useState('');
   const [phone, setPhone] = useState(''); const [email, setEmail] = useState(''); const [origin, setOrigin] = useState('');
-  const [selectedRooms, setSelectedRooms] = useState<string[]>(['']);
+  const [slots, setSlots] = useState<RoomSlot[]>([{ type: ROOM_TYPES[0], num: '' }]);
   const [numPeople, setNumPeople] = useState(1);
   const [paymentType, setPaymentType] = useState<PaymentType>('Efectivo');
   const [anticipoPaid, setAnticipoPaid] = useState(''); const [paidInFull, setPaidInFull] = useState(false);
   const [comments, setComments] = useState(''); const [saving, setSaving] = useState(false);
   const [occupiedRooms, setOccupiedRooms] = useState<Set<string>>(new Set());
   const [checkingAvail, setCheckingAvail] = useState(false);
+  const [specialActive, setSpecialActive] = useState(false);
+  const [specialInput, setSpecialInput] = useState('');
+  const [currency, setCurrency] = useState<'MXN' | 'USD'>('MXN');
+  const [rate, setRate] = useState(String(DEFAULT_USD_RATE));
+  const [factura, setFactura] = useState(false);
+  const [municipio, setMunicipio] = useState(false);
 
   useEffect(() => {
     if (startDate && endDate && endDate > startDate) {
@@ -139,7 +148,7 @@ function NewReservationModal({ config, allGuests, onClose, onSave }: { config: C
         res.forEach(r => { if (r.roomNumber) occ.add(r.roomNumber); });
         rooms.forEach(rm => { if (rm.blocked) occ.add(rm.num.toString()); });
         setOccupiedRooms(occ);
-        setSelectedRooms(prev => prev.map(rn => (rn && occ.has(rn)) ? '' : rn));
+        setSlots(prev => prev.map(s => (s.num && occ.has(s.num)) ? { ...s, num: '' } : s));
         setCheckingAvail(false);
       }).catch(() => setCheckingAvail(false));
     } else {
@@ -148,25 +157,30 @@ function NewReservationModal({ config, allGuests, onClose, onSave }: { config: C
     }
   }, [startDate, endDate, rooms]);
 
-  const datesReady = !!(startDate && endDate && endDate > startDate);
-  const isReturning = (() => {
-    if (!name.trim() || !phone.trim()) return false;
-    return allGuests.some(g => g.name.trim().toLowerCase() === name.trim().toLowerCase() && g.phone.replace(/\D/g, '') === phone.replace(/\D/g, '') && phone.replace(/\D/g, '').length >= 7);
-  })();
+  const fetchRate = async () => {
+    try { const r = await fetch('https://open.er-api.com/v6/latest/USD'); const d = await r.json(); if (d && d.rates && d.rates.MXN) setRate(Number(d.rates.MXN).toFixed(2)); } catch { /* keep default */ }
+  };
+  useEffect(() => { if (currency === 'USD') fetchRate(); }, [currency]);
 
+  const datesReady = !!(startDate && endDate && endDate > startDate);
   let nights = 0;
   if (datesReady) { const s = new Date(startDate + 'T12:00:00'), e = new Date(endDate + 'T12:00:00'); nights = Math.round((e.getTime() - s.getTime()) / 86400000); }
-  const roomsByNum: Record<string, RoomDef> = {};
-  rooms.forEach(rm => { roomsByNum[rm.num.toString()] = rm; });
-  const grandTotal = selectedRooms.filter(Boolean).reduce((sum, rn) => { const rm = roomsByNum[rn]; return sum + (rm ? (prices[rm.type] || 0) * nights : 0); }, 0);
 
-  const updateRoom = (idx: number, val: string) => { setSelectedRooms(prev => prev.map((r, i) => i === idx ? val : r)); };
-  const addRoomSlot = () => setSelectedRooms(prev => [...prev, '']);
-  const removeRoomSlot = (idx: number) => setSelectedRooms(prev => prev.filter((_, i) => i !== idx));
+  const rateNum = parseFloat(rate) || DEFAULT_USD_RATE;
+  const specialNum = parseFloat(specialInput);
+  const specialMXN = (!isNaN(specialNum) && specialNum > 0) ? Math.round(currency === 'USD' ? specialNum * rateNum : specialNum) : 0;
+  const facturaMult = factura ? 1.2 : 1;
+  const priceForSlot = (s: RoomSlot) => { const base = (specialActive && specialMXN > 0) ? specialMXN : (prices[s.type] || 0); return Math.round(base * facturaMult); };
+  const grandTotal = slots.filter(s => s.num).reduce((sum, s) => sum + priceForSlot(s) * nights, 0);
+
+  const updateSlotType = (idx: number, type: RoomType) => setSlots(prev => prev.map((s, i) => i === idx ? { type, num: '' } : s));
+  const updateSlotNum = (idx: number, num: string) => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, num } : s));
+  const addSlot = () => setSlots(prev => [...prev, { type: ROOM_TYPES[0], num: '' }]);
+  const removeSlot = (idx: number) => setSlots(prev => prev.filter((_, i) => i !== idx));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const chosen = selectedRooms.filter(Boolean);
+    const chosen = slots.map(s => s.num).filter(Boolean);
     if (!name.trim() || !employee.trim() || !startDate || !endDate) return;
     if (endDate <= startDate) { alert('La fecha de salida debe ser posterior a la de entrada'); return; }
     if (chosen.length === 0) { alert('Selecciona al menos un cuarto'); return; }
@@ -174,7 +188,12 @@ function NewReservationModal({ config, allGuests, onClose, onSave }: { config: C
     if (dup.length) { alert('Hay cuartos repetidos, elige cuartos distintos'); return; }
     for (const rn of chosen) { if (occupiedRooms.has(rn)) { alert(`El cuarto ${rn} no esta disponible en esas fechas.`); return; } }
     setSaving(true);
-    await onSave({ name: name.trim(), employee: employee.trim(), phone: phone.trim(), email: email.trim(), origin: origin.trim(), startDate, endDate, roomNumbers: chosen.join(','), numPeople, paymentType, anticipoPaid: paidInFull ? '' : anticipoPaid.trim(), comments: comments.trim(), paidInFull });
+    await onSave({
+      name: name.trim(), employee: employee.trim(), phone: phone.trim(), email: email.trim(), origin: origin.trim(),
+      startDate, endDate, roomNumbers: chosen.join(','), numPeople, paymentType,
+      anticipoPaid: paidInFull ? '' : anticipoPaid.trim(), comments: comments.trim(), paidInFull,
+      specialPrice: (specialActive && specialMXN > 0) ? String(specialMXN) : '', factura, municipio,
+    });
     setSaving(false);
   };
 
@@ -191,41 +210,76 @@ function NewReservationModal({ config, allGuests, onClose, onSave }: { config: C
         {datesReady && (
           <>
             {checkingAvail && <div className="form-hint">Verificando disponibilidad...</div>}
-            <div className="form-step-label">2. Selecciona los cuartos</div>
-            {selectedRooms.map((rn, idx) => (
-              <div key={idx} className="room-slot-row">
-                <select value={rn} onChange={e => updateRoom(idx, e.target.value)}>
-                  <option value="">Seleccionar cuarto disponible</option>
-                  {rooms.map(rm => { const occ = occupiedRooms.has(rm.num.toString()) && rn !== rm.num.toString(); const takenHere = selectedRooms.includes(rm.num.toString()) && rn !== rm.num.toString(); return <option key={rm.num} value={rm.num.toString()} disabled={occ || takenHere}>Cuarto {rm.num} ({rm.typeShort}) - {fmtMXN(prices[rm.type] || 0)}{occ ? ' — Ocupado' : takenHere ? ' — Ya elegido' : ''}</option>; })}
-                </select>
-                {selectedRooms.length > 1 && <button type="button" className="btn-remove-room" onClick={() => removeRoomSlot(idx)}>✕</button>}
-              </div>
-            ))}
-            <button type="button" className="btn-add-room" onClick={addRoomSlot}>+ Agregar otro cuarto</button>
+            <div className="form-step-label">2. Selecciona los cuartos (tipo, luego numero)</div>
+            {slots.map((slot, idx) => {
+              const availNums = rooms.filter(rm => rm.type === slot.type);
+              return (
+                <div key={idx} className="room-slot-row2">
+                  <select className="slot-type" value={slot.type} onChange={e => updateSlotType(idx, e.target.value as RoomType)}>
+                    {ROOM_TYPES.map(rt => <option key={rt} value={rt}>{rt} - {fmtMXN(prices[rt] || 0)}</option>)}
+                  </select>
+                  <select className="slot-num" value={slot.num} onChange={e => updateSlotNum(idx, e.target.value)}>
+                    <option value="">Cuarto #</option>
+                    {availNums.map(rm => { const occ = occupiedRooms.has(rm.num.toString()); const takenHere = slots.some((s, i) => i !== idx && s.num === rm.num.toString()); return <option key={rm.num} value={rm.num.toString()} disabled={occ || takenHere}>{rm.num}{occ ? ' — Ocupado' : takenHere ? ' — Elegido' : ''}</option>; })}
+                  </select>
+                  {slots.length > 1 && <button type="button" className="btn-remove-room" onClick={() => removeSlot(idx)}>✕</button>}
+                </div>
+              );
+            })}
+            <button type="button" className="btn-add-room" onClick={addSlot}>+ Agregar otro cuarto</button>
 
             <div className="form-step-label">3. Datos del huesped</div>
             <div className="input-group"><label>Nombre del Solicitante</label><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nombre completo" required /></div>
-            {isReturning && <div className="welcome-back">👋 Welcome back! Este huesped ya se ha hospedado antes.</div>}
             <div className="input-group"><label>Nombre del Empleado</label><input type="text" value={employee} onChange={e => setEmployee(e.target.value)} placeholder="Nombre del empleado" required /></div>
             <div className="input-group"><label>Telefono</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Numero de telefono" /></div>
             <div className="input-group"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@ejemplo.com" /></div>
             <div className="input-group"><label>De donde nos visita?</label><input type="text" value={origin} onChange={e => setOrigin(e.target.value)} placeholder="Ciudad, estado o pais" /></div>
             <div className="input-group"><label>Numero de Personas</label><select value={numPeople} onChange={e => setNumPeople(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n} persona{n !== 1 ? 's' : ''}</option>)}</select></div>
+
+            <div className="form-step-label">4. Precio y opciones</div>
+            <div className="pricing-box">
+              <label className="checkbox-label"><input type="checkbox" checked={specialActive} onChange={e => setSpecialActive(e.target.checked)} /><span><strong>Precio especial</strong> — familia, amigos, gobierno (sobreescribe el precio del cuarto)</span></label>
+              {specialActive && (
+                <div className="special-controls">
+                  <div className="special-row">
+                    <input type="number" className="special-input" value={specialInput} onChange={e => setSpecialInput(e.target.value)} placeholder="Precio por cuarto / noche" />
+                    <select className="currency-sel" value={currency} onChange={e => setCurrency(e.target.value as 'MXN' | 'USD')}><option value="MXN">MXN</option><option value="USD">USD</option></select>
+                  </div>
+                  {currency === 'USD' && (
+                    <div className="rate-row">
+                      <span>Tipo de cambio:</span>
+                      <input type="number" className="rate-input" value={rate} onChange={e => setRate(e.target.value)} step="0.01" />
+                      <span>MXN/USD</span>
+                      <button type="button" className="btn-mini" onClick={fetchRate}>Actualizar tasa</button>
+                    </div>
+                  )}
+                  {currency === 'USD' && specialMXN > 0 && <div className="rate-preview">≈ {fmtMXN(specialMXN)} por cuarto / noche</div>}
+                </div>
+              )}
+              <label className="checkbox-label"><input type="checkbox" checked={factura} onChange={e => setFactura(e.target.checked)} /><span><strong>Factura (+20%)</strong> — cobrar 20% adicional por factura</span></label>
+              <label className="checkbox-label municipio-label"><input type="checkbox" checked={municipio} onChange={e => setMunicipio(e.target.checked)} /><span><strong>Municipio</strong> — reservacion de gobierno, se cobra despues (aparece en morado)</span></label>
+            </div>
+
             <div className="input-group"><label>Tipo de Pago</label><select value={paymentType} onChange={e => setPaymentType(e.target.value as PaymentType)}>{PAYMENT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}</select></div>
             {!paidInFull && <div className="input-group"><label>Anticipo</label><input type="text" value={anticipoPaid} onChange={e => setAnticipoPaid(e.target.value)} placeholder="Ej: $500, 50%, ninguno" /></div>}
-            <div className="paid-full-toggle">
-              <label className="checkbox-label"><input type="checkbox" checked={paidInFull} onChange={e => setPaidInFull(e.target.checked)} /><span><strong>Pagado</strong> — el cliente pago el total y hace check-in ahora (walk-in)</span></label>
-            </div>
+            {!municipio && (
+              <div className="paid-full-toggle">
+                <label className="checkbox-label"><input type="checkbox" checked={paidInFull} onChange={e => setPaidInFull(e.target.checked)} /><span><strong>Pagado</strong> — el cliente pago el total y hace check-in ahora (walk-in)</span></label>
+              </div>
+            )}
             <div className="input-group"><label>Comentarios</label><textarea value={comments} onChange={e => setComments(e.target.value)} placeholder="Notas adicionales..." rows={2} /></div>
-            <div className="reservation-preview"><span>{nights} noche{nights !== 1 ? 's' : ''} · {selectedRooms.filter(Boolean).length} cuarto(s)</span><span className="preview-price">{fmtMXN(grandTotal)}</span></div>
+            <div className="reservation-preview">
+              <span>{nights} noche{nights !== 1 ? 's' : ''} · {slots.filter(s => s.num).length} cuarto(s){factura ? ' · +factura' : ''}{municipio ? ' · municipio' : ''}</span>
+              <span className="preview-price">{fmtMXN(grandTotal)}</span>
+            </div>
           </>
         )}
-        <div className="modal-actions"><button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn-primary" disabled={saving || !datesReady || !name.trim() || !employee.trim() || selectedRooms.filter(Boolean).length === 0}>{saving ? 'Guardando...' : paidInFull ? 'Guardar (Pagado + Check-in)' : 'Guardar Reservacion'}</button></div>
+        <div className="modal-actions"><button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn-primary" disabled={saving || !datesReady || !name.trim() || !employee.trim() || slots.filter(s => s.num).length === 0}>{saving ? 'Guardando...' : paidInFull ? 'Guardar (Pagado + Check-in)' : 'Guardar Reservacion'}</button></div>
       </form></div></div>
   );
 }
 
-/* ═══════ EDIT MODAL ═══════ */
+/* EDIT MODAL */
 function EditReservationModal({ config, onClose, onSave, initial }: { config: Config; onClose: () => void; onSave: (d: any) => void; initial: Reservation }) {
   const { rooms } = config;
   const [name, setName] = useState(initial.name); const [employee, setEmployee] = useState(initial.employee);
@@ -266,7 +320,7 @@ function EditReservationModal({ config, onClose, onSave, initial }: { config: Co
   );
 }
 
-/* ═══════ DETAIL MODAL ═══════ */
+/* DETAIL MODAL */
 function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymentComplete }: {
   r: Reservation; allWeek: Reservation[]; onClose: () => void; onEdit: () => void; onDelete: () => void;
   onStatus: (s: ReservationStatus) => void; onPaymentComplete: (method: 'Tarjeta' | 'Efectivo') => void;
@@ -279,10 +333,14 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
   const distinctNights = new Set(group.map(x => x.date)).size;
   const distinctRooms = Array.from(new Set(group.map(x => x.roomNumber))).filter(Boolean);
   const remaining = getGroupRemaining(r, allWeek);
-  const checkInBlocked = next === 'Check-in' && remaining > 0;
+  const checkInBlocked = next === 'Check-in' && remaining > 0 && !r.municipio;
   return (
     <div className="modal-overlay" onClick={onClose}><div className="modal-content" onClick={e => e.stopPropagation()}>
       <div className="modal-header"><h2>Detalle de Reservacion</h2><button className="modal-close" onClick={onClose}>✕</button></div>
+      <div className="detail-badges">
+        {r.municipio && <span className="tag-municipio">Municipio</span>}
+        {r.factura && <span className="tag-factura">Factura +20%</span>}
+      </div>
       <div className="detail-status-row">
         <div className={`detail-status-badge status-${r.status.toLowerCase().replace('-', '')}`}>{r.status === 'Check-in' ? '✓ Check-in' : r.status}</div>
         <button className="btn-status-toggle" disabled={busy1 || checkInBlocked} title={checkInBlocked ? 'Completa el pago para hacer check-in' : ''} onClick={async () => { setBusy1(true); await onStatus(next); setBusy1(false); }}>{busy1 ? 'Cambiando...' : `Cambiar a ${next}`}</button>
@@ -305,7 +363,9 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
         <div className="detail-row full-width"><span className="detail-label">Comentarios</span><span className="detail-value">{r.comments || 'Sin comentarios'}</span></div>
       </div>
       <div className="detail-payment-row"><span className="detail-label">Metodo de Pago: <strong>{r.paymentType}</strong></span></div>
-      {remaining > 0 && (
+      {r.municipio ? (
+        remaining > 0 && <div className="municipio-note">Esta reservacion es de municipio. El pago se registra desde el panel de Admin.</div>
+      ) : remaining > 0 && (
         <div className="payment-complete-section">
           {!showPayOptions ? (
             <button className="btn-payment-complete" onClick={() => setShowPayOptions(true)}>Registrar Pago Completo ({fmtMXN(remaining)} restante)</button>
@@ -326,7 +386,7 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
   );
 }
 
-/* ═══════ WEEK VIEW ═══════ */
+/* WEEK VIEW */
 function WeekView({ reservations, rooms, weekStart, onWeekChange, onSelectDate, selectedDate, onClick, onJump }: {
   reservations: Reservation[]; rooms: RoomDef[]; weekStart: Date; onWeekChange: (d: number) => void;
   onSelectDate: (d: string) => void; selectedDate: string; onClick: (r: Reservation) => void; onJump: (d: string) => void;
@@ -367,7 +427,7 @@ function WeekView({ reservations, rooms, weekStart, onWeekChange, onSelectDate, 
   );
 }
 
-/* ═══════ MANAGER DASHBOARD ═══════ */
+/* MANAGER DASHBOARD */
 function ManagerDashboard({ config, onLogout }: { config: Config; onLogout: () => void }) {
   const [reservations, setRes] = useState<Reservation[]>([]);
   const [weekStart, setWeekStart] = useState(getMonday(new Date()));
@@ -375,12 +435,10 @@ function ManagerDashboard({ config, onLogout }: { config: Config; onLogout: () =
   const [showNew, setShowNew] = useState(false); const [showReport, setShowReport] = useState(false);
   const [detail, setDetail] = useState<Reservation | null>(null); const [edit, setEdit] = useState<Reservation | null>(null);
   const [loading, setLoading] = useState(true);
-  const [allGuests, setAllGuests] = useState<{ name: string; phone: string }[]>([]);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const flash = (m: string, t: 'success' | 'error' = 'success') => { setToast({ message: m, type: t }); setTimeout(() => setToast(null), 3000); };
   const load = useCallback(async () => { setLoading(true); setRes(await apiGetReservations(fmt(weekStart), fmt(addDays(weekStart, 6)))); setLoading(false); }, [weekStart]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { (async () => { const all = await apiGetAllReservations(); const seen = new Set<string>(); const guests: { name: string; phone: string }[] = []; all.forEach((r: Reservation) => { const k = `${r.name}|${r.phone}`; if (!seen.has(k) && r.name && r.phone) { seen.add(k); guests.push({ name: r.name, phone: r.phone }); } }); setAllGuests(guests); })(); }, [showNew]);
 
   const handleAdd = async (data: any) => { const r = await apiAddReservation(data); if (r.success) { flash(`Reservacion guardada (${r.rooms} cuarto(s), ${r.nights} noche(s))`); setShowNew(false); load(); } else flash(r.error || 'Error', 'error'); };
   const handleUpdate = async (data: any) => { if (!edit?.rowIndex) return; const r = await apiUpdateReservation({ ...data, rowIndex: edit.rowIndex }); if (r.success) { flash('Actualizada'); setEdit(null); load(); } else flash(r.error || 'Error', 'error'); };
@@ -399,7 +457,7 @@ function ManagerDashboard({ config, onLogout }: { config: Config; onLogout: () =
             <WeekView reservations={reservations} rooms={config.rooms} weekStart={weekStart} onWeekChange={dir => setWeekStart(prev => addDays(prev, dir * 7))} onSelectDate={setSelectedDate} selectedDate={selectedDate} onClick={setDetail} onJump={ds => setWeekStart(getMonday(new Date(ds + 'T12:00:00')))} />}
         </div>
       </main>
-      {showNew && <NewReservationModal config={config} allGuests={allGuests} onClose={() => setShowNew(false)} onSave={handleAdd} />}
+      {showNew && <NewReservationModal config={config} onClose={() => setShowNew(false)} onSave={handleAdd} />}
       {showReport && <ReportModal rooms={config.rooms} onClose={() => setShowReport(false)} onSave={handleReport} />}
       {edit && <EditReservationModal config={config} onClose={() => setEdit(null)} onSave={handleUpdate} initial={edit} />}
       {detail && !edit && <DetailModal r={detail} allWeek={reservations} onClose={() => setDetail(null)} onEdit={() => { setEdit(detail); setDetail(null); }} onDelete={() => handleDelete(detail)} onStatus={async ns => bulkStatus(detail, ns)} onPaymentComplete={async method => handlePaymentComplete(detail, method)} />}
@@ -408,11 +466,12 @@ function ManagerDashboard({ config, onLogout }: { config: Config; onLogout: () =
   );
 }
 
-/* ═══════ ADMIN: REPORTS TAB ═══════ */
-function AdminReports({ allRes }: { allRes: Reservation[] }) {
+/* ADMIN: REPORTS TAB */
+function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: () => void }) {
   const [selectedDay, setSelectedDay] = useState(today());
   const [payLog, setPayLog] = useState<PaymentLogEntry[]>([]);
   const [viewMonth, setViewMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
+  const [payingId, setPayingId] = useState<string | null>(null);
   useEffect(() => { (async () => { setPayLog(await apiGetPaymentLog(selectedDay)); })(); }, [selectedDay]);
 
   const dayRes = allRes.filter(r => r.date === selectedDay);
@@ -437,9 +496,26 @@ function AdminReports({ allRes }: { allRes: Reservation[] }) {
   allRes.forEach(r => { if (r.roomNumber) roomCounts[r.roomNumber] = (roomCounts[r.roomNumber] || 0) + 1; });
   const topRooms = Object.entries(roomCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  const groupsMap: Record<string, { name: string; room: string; dates: string[]; total: number; anticipo: string; status: string }> = {};
-  allRes.forEach(r => { const key = groupKey(r); if (!groupsMap[key]) groupsMap[key] = { name: r.name, room: r.roomNumber, dates: [], total: 0, anticipo: r.anticipoPaid, status: r.status }; groupsMap[key].dates.push(r.date); groupsMap[key].total += Number(r.price); if (r.status === 'Check-in') groupsMap[key].status = 'Check-in'; });
-  const monthGroups = Object.values(groupsMap).filter(g => g.dates.some(d => d.startsWith(monthStr))).map(g => { const paid = parseAnticipo(g.anticipo, g.total); return { ...g, paid, remaining: Math.max(0, g.total - paid), start: g.dates.slice().sort()[0], end: g.dates.slice().sort()[g.dates.length - 1] }; }).sort((a, b) => a.start.localeCompare(b.start));
+  function buildGroups(filterFn: (r: Reservation) => boolean) {
+    const gm: Record<string, { key: string; name: string; room: string; dates: string[]; total: number; anticipo: string; status: string; sample: Reservation }> = {};
+    allRes.filter(filterFn).forEach(r => { const key = groupKey(r); if (!gm[key]) gm[key] = { key, name: r.name, room: r.roomNumber, dates: [], total: 0, anticipo: r.anticipoPaid, status: r.status, sample: r }; gm[key].dates.push(r.date); gm[key].total += Number(r.price); if (r.status === 'Check-in') gm[key].status = 'Check-in'; });
+    return Object.values(gm).filter(g => g.dates.some(d => d.startsWith(monthStr))).map(g => { const paid = parseAnticipo(g.anticipo, g.total); return { ...g, paid, remaining: Math.max(0, g.total - paid), start: g.dates.slice().sort()[0], end: g.dates.slice().sort()[g.dates.length - 1] }; }).sort((a, b) => a.start.localeCompare(b.start));
+  }
+  const monthGroups = buildGroups(() => true);
+  const municipioGroups = buildGroups(r => r.municipio);
+  const municipioPending = municipioGroups.filter(g => g.remaining > 0);
+  const municipioPendingTotal = municipioPending.reduce((s, g) => s + g.remaining, 0);
+
+  const facturaKeys = new Set(monthRes.filter(r => r.factura).map(r => groupKey(r)));
+  const municipioKeys = new Set(monthRes.filter(r => r.municipio).map(r => groupKey(r)));
+
+  const markMunicipioPaid = async (g: { key: string; sample: Reservation }) => {
+    setPayingId(g.key);
+    const r = g.sample;
+    const res = await apiMarkPaid({ reservationId: r.reservationId, name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate });
+    setPayingId(null);
+    if (res.success) onReload();
+  };
 
   const calFirst = new Date(viewMonth.year, viewMonth.month, 1);
   const calLast = new Date(viewMonth.year, viewMonth.month + 1, 0);
@@ -449,6 +525,9 @@ function AdminReports({ allRes }: { allRes: Reservation[] }) {
   const calCells: ({ day: number; count: number; date: string } | null)[] = [];
   for (let i = 0; i < startDay; i++) calCells.push(null);
   for (let d = 1; d <= daysInMonth; d++) { const ds = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`; calCells.push({ day: d, count: resByDate[ds] || 0, date: ds }); }
+
+  const prevMonth = () => setViewMonth(p => p.month === 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: p.month - 1 });
+  const nextMonth = () => setViewMonth(p => p.month === 11 ? { year: p.year + 1, month: 0 } : { year: p.year, month: p.month + 1 });
 
   return (
     <div className="admin-body">
@@ -473,6 +552,7 @@ function AdminReports({ allRes }: { allRes: Reservation[] }) {
           {topRooms.length === 0 ? <p className="text-muted">Sin datos</p> : topRooms.map(([room, count]) => (<div key={room} className="admin-stat-row"><span>Cuarto {room}</span><strong>{count} noches</strong></div>))}
         </div>
       </div>
+
       <div className="admin-row">
         <div className="admin-card admin-card-full">
           <div className="admin-card-head"><h3>Actividad de Pagos Completados — {fmtDisp(selectedDay)}</h3></div>
@@ -486,21 +566,47 @@ function AdminReports({ allRes }: { allRes: Reservation[] }) {
           )}
         </div>
       </div>
+
       <div className="admin-row">
-        <div className="admin-card"><h3>{MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3><div className="admin-stat-row"><span>Total Reservaciones</span><strong>{monthRes.length}</strong></div><div className="admin-stat-row"><span>Ingreso Total</span><strong className="text-success">{fmtMXN(monthTotal)}</strong></div></div>
+        <div className="admin-card"><h3>{MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3>
+          <div className="admin-stat-row"><span>Total Reservaciones</span><strong>{monthRes.length}</strong></div>
+          <div className="admin-stat-row"><span>Ingreso Total</span><strong className="text-success">{fmtMXN(monthTotal)}</strong></div>
+          <div className="admin-stat-row"><span>Necesitan Factura</span><strong>{facturaKeys.size}</strong></div>
+          <div className="admin-stat-row"><span>De Municipio</span><strong>{municipioKeys.size}</strong></div>
+        </div>
         <div className="admin-card admin-card-wide">
-          <div className="cal-header"><button className="btn-nav" onClick={() => setViewMonth(p => p.month === 0 ? { year: p.year - 1, month: 11 } : { year: p.year, month: p.month - 1 })}>←</button><h3>{MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3><button className="btn-nav" onClick={() => setViewMonth(p => p.month === 11 ? { year: p.year + 1, month: 0 } : { year: p.year, month: p.month + 1 })}>→</button></div>
+          <div className="cal-header"><button className="btn-nav" onClick={prevMonth}>←</button><h3>{MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3><button className="btn-nav" onClick={nextMonth}>→</button></div>
           <div className="cal-grid">{['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'].map(d => <div key={d} className="cal-day-label">{d}</div>)}
             {calCells.map((cell, i) => { if (!cell) return <div key={`e${i}`} className="cal-cell cal-empty" />; return (<div key={cell.date} className={`cal-cell ${cell.count > 0 ? 'cal-has-res' : ''} ${cell.date === today() ? 'cal-today' : ''}`}><span className="cal-num">{cell.day}</span>{cell.count > 0 && <span className="cal-count">{cell.count}</span>}</div>); })}
           </div>
         </div>
       </div>
+
+      <div className="admin-row">
+        <div className="admin-card admin-card-full municipio-card">
+          <div className="cal-header"><button className="btn-nav" onClick={prevMonth}>←</button><h3>Reservaciones de Municipio — {MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3><button className="btn-nav" onClick={nextMonth}>→</button></div>
+          <div className="municipio-summary"><span>{municipioGroups.length} reservacion(es) de municipio</span><span className="muni-pending">{municipioPending.length} pendientes · {fmtMXN(municipioPendingTotal)} por cobrar</span></div>
+          {municipioGroups.length === 0 ? <p className="text-muted">Sin reservaciones de municipio este mes.</p> : (
+            <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Reservacion</th><th>Cuarto</th><th>Fechas</th><th>Total</th><th>Estado Pago</th><th>Accion</th></tr></thead>
+              <tbody>{municipioGroups.map((g, i) => (
+                <tr key={i} className={g.remaining > 0 ? 'row-unpaid' : ''}>
+                  <td>{g.name}</td><td>{g.room}</td>
+                  <td>{fmtDisp(g.start)}{g.dates.length > 1 ? ` → ${fmtDisp(g.end)}` : ''}</td>
+                  <td>{fmtMXN(g.total)}</td>
+                  <td>{g.remaining > 0 ? <span className="text-danger"><strong>Pendiente {fmtMXN(g.remaining)}</strong></span> : <span className="text-success"><strong>Pagado</strong></span>}</td>
+                  <td>{g.remaining > 0 ? <button className="btn-mini" disabled={payingId === g.key} onClick={() => markMunicipioPaid(g)}>{payingId === g.key ? '...' : 'Marcar Pagado'}</button> : '✓'}</td>
+                </tr>
+              ))}</tbody></table></div>
+          )}
+        </div>
+      </div>
+
       <div className="admin-row">
         <div className="admin-card admin-card-full">
           <h3>Desglose por Reservacion — {MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3>
           {monthGroups.length === 0 ? <p className="text-muted">Sin reservaciones este mes.</p> : (
             <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Reservacion</th><th>Cuarto</th><th>Fechas</th><th>Noches</th><th>Total</th><th>Pagado</th><th>Restante</th><th>Estado</th></tr></thead>
-              <tbody>{monthGroups.map((g, i) => (<tr key={i} className={g.remaining > 0 ? 'row-unpaid' : ''}><td>{g.name}</td><td>{g.room}</td><td>{fmtDisp(g.start)}{g.dates.length > 1 ? ` → ${fmtDisp(g.end)}` : ''}</td><td>{g.dates.length}</td><td>{fmtMXN(g.total)}</td><td>{fmtMXN(g.paid)}</td><td className={g.remaining > 0 ? 'text-danger' : 'text-success'}><strong>{g.remaining > 0 ? fmtMXN(g.remaining) : 'Pagado'}</strong></td><td>{g.status === 'Check-in' ? <span className="status-chip checkin">✓ Check-in</span> : <span className="status-chip reserva">Reserva</span>}</td></tr>))}</tbody></table></div>
+              <tbody>{monthGroups.map((g, i) => (<tr key={i} className={g.remaining > 0 ? 'row-unpaid' : ''}><td>{g.name}{g.sample.municipio ? ' 🏛️' : ''}{g.sample.factura ? ' 🧾' : ''}</td><td>{g.room}</td><td>{fmtDisp(g.start)}{g.dates.length > 1 ? ` → ${fmtDisp(g.end)}` : ''}</td><td>{g.dates.length}</td><td>{fmtMXN(g.total)}</td><td>{fmtMXN(g.paid)}</td><td className={g.remaining > 0 ? 'text-danger' : 'text-success'}><strong>{g.remaining > 0 ? fmtMXN(g.remaining) : 'Pagado'}</strong></td><td>{g.status === 'Check-in' ? <span className="status-chip checkin">✓ Check-in</span> : <span className="status-chip reserva">Reserva</span>}</td></tr>))}</tbody></table></div>
           )}
         </div>
       </div>
@@ -508,7 +614,7 @@ function AdminReports({ allRes }: { allRes: Reservation[] }) {
   );
 }
 
-/* ═══════ ADMIN: SETTINGS TAB ═══════ */
+/* ADMIN: SETTINGS TAB */
 function AdminSettings({ config, onConfigChange, flash }: { config: Config; onConfigChange: () => void; flash: (m: string, t?: 'success' | 'error') => void }) {
   const { rooms, prices } = config;
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
@@ -532,7 +638,6 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
 
   return (
     <div className="admin-body">
-      {/* Maintenance to-do */}
       <div className="admin-row">
         <div className="admin-card admin-card-full">
           <h3>🔧 Cosas por Arreglar (reportadas por el gerente)</h3>
@@ -544,7 +649,6 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
         </div>
       </div>
 
-      {/* Prices */}
       <div className="admin-row">
         <div className="admin-card admin-card-wide">
           <h3>Precios por Tipo de Habitacion</h3>
@@ -568,7 +672,6 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
         </div>
       </div>
 
-      {/* Rooms list w/ block + delete */}
       <div className="admin-row">
         <div className="admin-card admin-card-full">
           <h3>Cuartos ({rooms.length})</h3>
@@ -595,7 +698,6 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
         </div>
       </div>
 
-      {/* Passwords */}
       <div className="admin-row">
         <div className="admin-card admin-card-full">
           <h3>Accesos / Contrasenas</h3>
@@ -608,7 +710,7 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
   );
 }
 
-/* ═══════ ADMIN DASHBOARD (tabs) ═══════ */
+/* ADMIN DASHBOARD */
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<'reports' | 'settings'>('reports');
   const [allRes, setAllRes] = useState<Reservation[]>([]);
@@ -617,7 +719,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const flash = (m: string, t: 'success' | 'error' = 'success') => { setToast({ message: m, type: t }); setTimeout(() => setToast(null), 3000); };
   const loadConfig = useCallback(async () => { const c = await apiGetConfig(); if (c && c.rooms && c.rooms.length) setConfig(c); }, []);
-  useEffect(() => { (async () => { setLoading(true); setAllRes(await apiGetAllReservations()); await loadConfig(); setLoading(false); })(); }, [loadConfig]);
+  const loadAll = useCallback(async () => { setAllRes(await apiGetAllReservations()); }, []);
+  useEffect(() => { (async () => { setLoading(true); await loadAll(); await loadConfig(); setLoading(false); })(); }, [loadAll, loadConfig]);
 
   return (
     <div className="dashboard">
@@ -627,13 +730,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <div className="header-right"><button className="btn-ghost" onClick={onLogout}>Salir</button></div>
       </header>
       {loading ? <div className="loading-state"><div className="spinner" /><p>Cargando datos...</p></div> :
-        tab === 'reports' ? <AdminReports allRes={allRes} /> : <AdminSettings config={config} onConfigChange={loadConfig} flash={flash} />}
+        tab === 'reports' ? <AdminReports allRes={allRes} onReload={loadAll} /> : <AdminSettings config={config} onConfigChange={loadConfig} flash={flash} />}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.type === 'success' ? '✓' : '✕'} {toast.message}</div>}
     </div>
   );
 }
 
-/* ═══════ APP ROOT ═══════ */
+/* APP ROOT */
 export default function App() {
   const [role, setRole] = useState<string | null>(() => sessionStorage.getItem('hotel_auth'));
   const [config, setConfig] = useState<Config | null>(null);

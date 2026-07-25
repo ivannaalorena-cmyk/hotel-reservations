@@ -36,6 +36,7 @@ export async function apiAddReservation(r: {
   name: string; employee: string; phone: string; email: string; origin: string;
   startDate: string; endDate: string; roomNumbers: string; numPeople: number;
   paymentType: string; anticipoPaid: string; comments: string; paidInFull: boolean;
+  specialPrice: string; factura: boolean; municipio: boolean;
 }) {
   const data = await gasGet({
     action: 'addReservation',
@@ -43,7 +44,13 @@ export async function apiAddReservation(r: {
     startDate: r.startDate, endDate: r.endDate, roomNumbers: r.roomNumbers,
     numPeople: r.numPeople.toString(), paymentType: r.paymentType,
     anticipoPaid: r.anticipoPaid, comments: r.comments, paidInFull: r.paidInFull ? 'true' : 'false',
+    specialPrice: r.specialPrice, factura: r.factura ? 'true' : 'false', municipio: r.municipio ? 'true' : 'false',
   });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiMarkPaid(p: { reservationId: string; name: string; roomNumber: string; registrationDate: string; }) {
+  const data = await gasGet({ action: 'markPaid', reservationId: p.reservationId, name: p.name, roomNumber: p.roomNumber, registrationDate: p.registrationDate });
   return data || { error: 'Error de conexion' };
 }
 
