@@ -36,7 +36,7 @@ export async function apiAddReservation(r: {
   name: string; employee: string; phone: string; email: string; origin: string;
   startDate: string; endDate: string; roomNumbers: string; numPeople: number;
   paymentType: string; anticipoPaid: string; comments: string; paidInFull: boolean;
-  specialPrice: string; factura: boolean; municipio: boolean;
+  specialPrice: string; factura: boolean; cxc: boolean; entidad: string;
 }) {
   const data = await gasGet({
     action: 'addReservation',
@@ -44,7 +44,8 @@ export async function apiAddReservation(r: {
     startDate: r.startDate, endDate: r.endDate, roomNumbers: r.roomNumbers,
     numPeople: r.numPeople.toString(), paymentType: r.paymentType,
     anticipoPaid: r.anticipoPaid, comments: r.comments, paidInFull: r.paidInFull ? 'true' : 'false',
-    specialPrice: r.specialPrice, factura: r.factura ? 'true' : 'false', municipio: r.municipio ? 'true' : 'false',
+    specialPrice: r.specialPrice, factura: r.factura ? 'true' : 'false',
+    cxc: r.cxc ? 'true' : 'false', entidad: r.entidad,
   });
   return data || { error: 'Error de conexion' };
 }
@@ -117,6 +118,14 @@ export async function apiDeleteRoom(num: string) {
 }
 export async function apiBlockRoom(num: string, blocked: boolean, reason: string) {
   const data = await gasGet({ action: 'blockRoom', num, blocked: blocked ? 'true' : 'false', reason });
+  return data || { error: 'Error de conexion' };
+}
+export async function apiUpdateRoomType(num: string, roomType: string) {
+  const data = await gasGet({ action: 'updateRoomType', num, roomType });
+  return data || { error: 'Error de conexion' };
+}
+export async function apiDeletePayment(rowIndex: number) {
+  const data = await gasGet({ action: 'deletePayment', rowIndex: rowIndex.toString() });
   return data || { error: 'Error de conexion' };
 }
 

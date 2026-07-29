@@ -17,16 +17,17 @@ export interface Reservation {
   registrationDate: string;
   checkout: string;
   reservationId: string;
-  municipio: boolean;
+  cxc: boolean;
+  entidad: string;
   factura: boolean;
   rowIndex?: number;
 }
 
-export type RoomType = '1 Cama Matrimonial' | '1 Cama King Size' | '2 Camas Matrimoniales' | '2 Camas King Size';
+export type RoomType = '1 Cama Matrimonial' | '1 Cama King Size' | '2 Camas Matrimoniales' | '2 Camas Matrimoniales con Sala' | '2 Camas King Size';
 export type PaymentType = 'Tarjeta' | 'Efectivo' | 'Pago Faltante';
 export type ReservationStatus = 'Reserva' | 'Check-in';
 
-export const ROOM_TYPES: RoomType[] = ['1 Cama Matrimonial', '1 Cama King Size', '2 Camas Matrimoniales', '2 Camas King Size'];
+export const ROOM_TYPES: RoomType[] = ['1 Cama Matrimonial', '1 Cama King Size', '2 Camas Matrimoniales', '2 Camas Matrimoniales con Sala', '2 Camas King Size'];
 export const PAYMENT_TYPES: PaymentType[] = ['Efectivo', 'Tarjeta', 'Pago Faltante'];
 export const STATUSES: ReservationStatus[] = ['Reserva', 'Check-in'];
 
@@ -35,6 +36,7 @@ export const DEFAULT_PRICES: Record<RoomType, number> = {
   '1 Cama Matrimonial': 900,
   '1 Cama King Size': 1100,
   '2 Camas Matrimoniales': 1500,
+  '2 Camas Matrimoniales con Sala': 1500,
   '2 Camas King Size': 1700,
 };
 
@@ -42,6 +44,7 @@ export const PEOPLE_OPTIONS: Record<RoomType, number[]> = {
   '1 Cama Matrimonial': [1, 2],
   '1 Cama King Size': [1, 2],
   '2 Camas Matrimoniales': [1, 2, 3, 4],
+  '2 Camas Matrimoniales con Sala': [1, 2, 3, 4],
   '2 Camas King Size': [1, 2, 3, 4, 5, 6],
 };
 
@@ -81,7 +84,14 @@ export const DEFAULT_ROOMS: RoomDef[] = [
 ];
 
 export function shortFor(type: RoomType): string {
-  return type === '1 Cama Matrimonial' ? 'Mat' : type === '1 Cama King Size' ? 'King' : type === '2 Camas Matrimoniales' ? '2xMat' : '2xKing';
+  switch (type) {
+    case '1 Cama Matrimonial': return 'Mat';
+    case '1 Cama King Size': return 'King';
+    case '2 Camas Matrimoniales': return '2xMat';
+    case '2 Camas Matrimoniales con Sala': return '2xMat+Sala';
+    case '2 Camas King Size': return '2xKing';
+    default: return '';
+  }
 }
 
 export interface MaintenanceItem { id: string; timestamp: string; room: string; description: string; status: string; createdBy: string; }
