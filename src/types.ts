@@ -24,11 +24,11 @@ export interface Reservation {
 }
 
 export type RoomType = '1 Cama Matrimonial' | '1 Cama King Size' | '2 Camas Matrimoniales' | '2 Camas Matrimoniales con Sala' | '2 Camas King Size';
-export type PaymentType = 'Tarjeta' | 'Efectivo' | 'Pago Faltante';
+export type PaymentType = 'Tarjeta' | 'Efectivo' | 'Transferencia' | 'Pago Faltante';
 export type ReservationStatus = 'Reserva' | 'Check-in';
 
 export const ROOM_TYPES: RoomType[] = ['1 Cama Matrimonial', '1 Cama King Size', '2 Camas Matrimoniales', '2 Camas Matrimoniales con Sala', '2 Camas King Size'];
-export const PAYMENT_TYPES: PaymentType[] = ['Efectivo', 'Tarjeta', 'Pago Faltante'];
+export const PAYMENT_TYPES: PaymentType[] = ['Efectivo', 'Tarjeta', 'Transferencia', 'Pago Faltante'];
 export const STATUSES: ReservationStatus[] = ['Reserva', 'Check-in'];
 
 // Default prices (seed) — actual prices come from backend config
