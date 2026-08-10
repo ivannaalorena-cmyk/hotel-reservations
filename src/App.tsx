@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Reservation, RoomType, PaymentType, ReservationStatus, RoomDef, MaintenanceItem, UserAccess,
-  ROOM_TYPES, PAYMENT_TYPES, STATUSES, DEFAULT_ROOMS, DEFAULT_PRICES, DEFAULT_USD_RATE, DAY_NAMES,
+  ROOM_TYPES, PAYMENT_TYPES, DEFAULT_ROOMS, DEFAULT_PRICES, DEFAULT_USD_RATE, DAY_NAMES,
 } from './types';
 import {
-  apiLogin, apiGetConfig, apiGetReservations, apiAddReservation, apiUpdateReservation,
+  apiLogin, apiGetConfig, apiGetReservations, apiAddReservation,
   apiDeleteReservation, apiBulkStatusUpdate, apiBulkPaymentComplete, apiGetAllReservations,
   apiGetPaymentLog, apiGetMaintenance, apiAddMaintenance, apiResolveMaintenance,
   apiUpdatePrice, apiAddRoom, apiDeleteRoom, apiBlockRoom, apiGetUsers, apiMarkPaid,
-  apiUpdateRoomType, apiDeletePayment,
+  apiUpdateRoomType, apiDeletePayment, apiBulkEditReservation, apiGetCleaned, apiSetClean,
+  apiEditRoom, apiAddRoomToReservation, apiRemoveRoomFromReservation,
 } from './api';
 
 interface PaymentLogEntry { timestamp: string; name: string; room: string; method: string; amount: number; registrationDate: string; rowIndex: number; }
@@ -138,14 +139,13 @@ function ReportModal({ rooms, onClose, onSave }: { rooms: RoomDef[]; onClose: ()
 }
 
 /* NEW RESERVATION MODAL */
-interface RoomSlot { type: RoomType; num: string; }
+interface RoomSlot { type: RoomType; num: string; people: string; }
 function NewReservationModal({ config, onClose, onSave }: { config: Config; onClose: () => void; onSave: (d: any) => void }) {
   const { rooms, prices } = config;
   const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState('');
   const [name, setName] = useState(''); const [employee, setEmployee] = useState('');
   const [phone, setPhone] = useState(''); const [email, setEmail] = useState(''); const [origin, setOrigin] = useState('');
-  const [slots, setSlots] = useState<RoomSlot[]>([{ type: ROOM_TYPES[0], num: '' }]);
-  const [numPeople, setNumPeople] = useState('1');
+  const [slots, setSlots] = useState<RoomSlot[]>([{ type: ROOM_TYPES[0], num: '', people: '2' }]);
   const [paymentType, setPaymentType] = useState<PaymentType>('Efectivo');
   const [anticipoPaid, setAnticipoPaid] = useState(''); const [paidInFull, setPaidInFull] = useState(false);
   const [comments, setComments] = useState(''); const [saving, setSaving] = useState(false);
@@ -192,9 +192,10 @@ function NewReservationModal({ config, onClose, onSave }: { config: Config; onCl
   const priceForSlot = (s: RoomSlot) => { const base = (specialActive && specialMXN > 0) ? specialMXN : (prices[s.type] || 0); return Math.round(base * facturaMult); };
   const grandTotal = slots.filter(s => s.num).reduce((sum, s) => sum + priceForSlot(s) * nights, 0);
 
-  const updateSlotType = (idx: number, type: RoomType) => setSlots(prev => prev.map((s, i) => i === idx ? { type, num: '' } : s));
+  const updateSlotType = (idx: number, type: RoomType) => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, type, num: '' } : s));
   const updateSlotNum = (idx: number, num: string) => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, num } : s));
-  const addSlot = () => setSlots(prev => [...prev, { type: ROOM_TYPES[0], num: '' }]);
+  const updateSlotPeople = (idx: number, people: string) => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, people } : s));
+  const addSlot = () => setSlots(prev => [...prev, { type: ROOM_TYPES[0], num: '', people: '2' }]);
   const removeSlot = (idx: number) => setSlots(prev => prev.filter((_, i) => i !== idx));
   const onPhone = (v: string) => setPhone(v.replace(/\D/g, '').slice(0, 10));
 
@@ -209,11 +210,12 @@ function NewReservationModal({ config, onClose, onSave }: { config: Config; onCl
     if (dup.length) { alert('Hay cuartos repetidos, elige cuartos distintos'); return; }
     for (const rn of chosen) { if (occupiedRooms.has(rn)) { alert(`El cuarto ${rn} no esta disponible en esas fechas.`); return; } }
     if (cxc && !entidad.trim()) { alert('Escribe el nombre de la entidad (municipio, empresa, etc.)'); return; }
-    const np = Math.max(1, parseInt(numPeople) || 1);
+    const chosenSlots = slots.filter(s => s.num);
+    const peopleCounts = chosenSlots.map(s => String(Math.max(1, parseInt(s.people) || 1)));
     setSaving(true);
     await onSave({
       name: name.trim(), employee: employee.trim(), phone: phone.trim(), email: email.trim(), origin: origin.trim(),
-      startDate, endDate, roomNumbers: chosen.join(','), numPeople: np,
+      startDate, endDate, roomNumbers: chosen.join(','), numPeople: parseInt(peopleCounts[0]) || 1, peopleCounts: peopleCounts.join(','),
       paymentType: cxc ? 'Pago Faltante' : paymentType,
       anticipoPaid: (paidInFull || cxc) ? '' : anticipoPaid.trim(), comments: comments.trim(), paidInFull: cxc ? false : paidInFull,
       specialPrice: (specialActive && specialMXN > 0) ? String(specialMXN) : '', factura, cxc, entidad: cxc ? entidad.trim() : '',
@@ -246,10 +248,12 @@ function NewReservationModal({ config, onClose, onSave }: { config: Config; onCl
                     <option value="">Cuarto #</option>
                     {availNums.map(rm => { const occ = occupiedRooms.has(rm.num.toString()); const takenHere = slots.some((s, i) => i !== idx && s.num === rm.num.toString()); return <option key={rm.num} value={rm.num.toString()} disabled={occ || takenHere}>{rm.num}{occ ? ' — Ocupado' : takenHere ? ' — Elegido' : ''}</option>; })}
                   </select>
+                  <input className="slot-people" type="number" min={1} value={slot.people} onChange={e => updateSlotPeople(idx, e.target.value)} title="Personas en este cuarto" />
                   {slots.length > 1 && <button type="button" className="btn-remove-room" onClick={() => removeSlot(idx)}>✕</button>}
                 </div>
               );
             })}
+            <div className="slot-hint">Tipo · Cuarto · Personas en ese cuarto</div>
             <button type="button" className="btn-add-room" onClick={addSlot}>+ Agregar otro cuarto</button>
 
             <div className="form-step-label">3. Datos del huesped</div>
@@ -258,7 +262,6 @@ function NewReservationModal({ config, onClose, onSave }: { config: Config; onCl
             <div className="input-group"><label>Telefono (10 numeros)</label><input type="tel" inputMode="numeric" value={phone} onChange={e => onPhone(e.target.value)} placeholder="10 digitos" maxLength={10} />{phone && phone.length !== 10 && <span className="field-warn">Faltan {10 - phone.length} numero(s)</span>}</div>
             <div className="input-group"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@ejemplo.com" /></div>
             <div className="input-group"><label>De donde nos visita?</label><input type="text" value={origin} onChange={e => setOrigin(e.target.value)} placeholder="Ciudad, estado o pais" /></div>
-            <div className="input-group"><label>Numero de Personas (total)</label><input type="number" min={1} value={numPeople} onChange={e => setNumPeople(e.target.value)} placeholder="Ej: 8" /></div>
 
             <div className="form-step-label">4. Precio y opciones</div>
             <div className="pricing-box">
@@ -308,51 +311,128 @@ function NewReservationModal({ config, onClose, onSave }: { config: Config; onCl
   );
 }
 
-/* EDIT MODAL */
-function EditReservationModal({ config, onClose, onSave, initial }: { config: Config; onClose: () => void; onSave: (d: any) => void; initial: Reservation }) {
+/* RESERVATION EDITOR (whole reservation + per-room) */
+interface EditRoom { origRoom: string; roomNumber: string; price: string; people: string; }
+function ReservationEditor({ config, reservation, allWeek, onClose, onChanged, flash }: {
+  config: Config; reservation: Reservation; allWeek: Reservation[]; onClose: () => void; onChanged: () => void; flash: (m: string, t?: 'success' | 'error') => void;
+}) {
   const { rooms } = config;
-  const [name, setName] = useState(initial.name); const [employee, setEmployee] = useState(initial.employee);
-  const [phone, setPhone] = useState(initial.phone); const [email, setEmail] = useState(initial.email);
-  const [origin, setOrigin] = useState(initial.origin || ''); const [date, setDate] = useState(initial.date);
-  const [checkout, setCheckout] = useState(initial.checkout || '');
-  const [roomType, setRoomType] = useState<RoomType>(initial.roomType);
-  const [numPeople, setNumPeople] = useState(String(initial.numPeople || 1));
-  const [roomNumber, setRoomNumber] = useState(initial.roomNumber);
-  const [paymentType, setPaymentType] = useState<PaymentType>(initial.paymentType);
-  const [anticipoPaid, setAnticipoPaid] = useState(String(initial.anticipoPaid || ''));
-  const [status, setStatus] = useState<ReservationStatus>(initial.status);
-  const [comments, setComments] = useState(initial.comments || ''); const [saving, setSaving] = useState(false);
+  const r = reservation;
+  const matchBase = { reservationId: r.reservationId, registrationDate: r.registrationDate };
+  const [matchName, setMatchName] = useState(r.name);
+
+  // Reservation-level fields
+  const [name, setName] = useState(r.name); const [employee, setEmployee] = useState(r.employee);
+  const [phone, setPhone] = useState(r.phone); const [email, setEmail] = useState(r.email);
+  const [origin, setOrigin] = useState(r.origin || ''); const [comments, setComments] = useState(r.comments || '');
+  const [paymentType, setPaymentType] = useState<PaymentType>(r.paymentType);
+  const [cxc, setCxc] = useState(r.cxc); const [entidad, setEntidad] = useState(r.entidad || '');
+  const [savingInfo, setSavingInfo] = useState(false);
   const onPhone = (v: string) => setPhone(v.replace(/\D/g, '').slice(0, 10));
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); if (!name.trim() || !employee.trim() || !date) return; if (phone && phone.length !== 10) { alert('El telefono debe tener 10 numeros'); return; } setSaving(true); await onSave({ name: name.trim(), employee: employee.trim(), phone: phone.trim(), email: email.trim(), origin: origin.trim(), date, checkout, roomType, numPeople: Math.max(1, parseInt(numPeople) || 1), roomNumber: roomNumber.trim(), paymentType, anticipoPaid: anticipoPaid.trim(), status, comments: comments.trim() }); setSaving(false); };
+
+  // Per-room list (derived from the reservation group in the current week)
+  const group = getGroup(r, allWeek);
+  const initialRooms: EditRoom[] = Array.from(new Set(group.map(x => x.roomNumber))).filter(Boolean).map(rn => {
+    const row = group.find(x => x.roomNumber === rn)!;
+    return { origRoom: rn, roomNumber: rn, price: String(row.price), people: String(row.numPeople) };
+  });
+  const [editRooms, setEditRooms] = useState<EditRoom[]>(initialRooms);
+  const [busyRoom, setBusyRoom] = useState<string | null>(null);
+  const [newRoom, setNewRoom] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newPeople, setNewPeople] = useState('2');
+
+  const saveInfo = async () => {
+    if (phone && phone.length !== 10) { flash('El telefono debe tener 10 numeros', 'error'); return; }
+    if (cxc && !entidad.trim()) { flash('Escribe la entidad de cuentas por cobrar', 'error'); return; }
+    setSavingInfo(true);
+    const res = await apiBulkEditReservation({
+      ...matchBase, name: matchName, roomNumber: r.roomNumber,
+      newName: name.trim(), newEmployee: employee.trim(), newPhone: phone.trim(), newEmail: email.trim(), newOrigin: origin.trim(), newComments: comments.trim(),
+      paymentType: cxc ? 'Pago Faltante' : paymentType, cxc: cxc ? 'true' : 'false', entidad: cxc ? entidad.trim() : '', newPrice: '',
+    });
+    setSavingInfo(false);
+    if (res.success) { setMatchName(name.trim()); flash('Datos actualizados'); onChanged(); } else flash(res.error || 'Error', 'error');
+  };
+
+  const updateRoomField = (idx: number, field: keyof EditRoom, val: string) => setEditRooms(prev => prev.map((rm, i) => i === idx ? { ...rm, [field]: val } : rm));
+
+  const saveRoom = async (idx: number) => {
+    const er = editRooms[idx];
+    setBusyRoom(er.origRoom);
+    const res = await apiEditRoom({ ...matchBase, name: matchName, oldRoom: er.origRoom, newRoom: er.roomNumber.trim() || er.origRoom, price: er.price.trim(), people: String(Math.max(1, parseInt(er.people) || 1)) });
+    setBusyRoom(null);
+    if (res.success) { setEditRooms(prev => prev.map((rm, i) => i === idx ? { ...rm, origRoom: rm.roomNumber } : rm)); flash('Cuarto actualizado'); onChanged(); } else flash(res.error || 'Error', 'error');
+  };
+
+  const removeRoom = async (idx: number) => {
+    const er = editRooms[idx];
+    if (editRooms.length <= 1) { flash('La reservacion debe tener al menos un cuarto', 'error'); return; }
+    if (!confirm(`Quitar el cuarto ${er.origRoom} de esta reservacion?`)) return;
+    setBusyRoom(er.origRoom);
+    const res = await apiRemoveRoomFromReservation({ ...matchBase, name: matchName, room: er.origRoom });
+    setBusyRoom(null);
+    if (res.success) { setEditRooms(prev => prev.filter((_, i) => i !== idx)); flash('Cuarto quitado'); onChanged(); } else flash(res.error || 'Error', 'error');
+  };
+
+  const addRoom = async () => {
+    if (!newRoom) { flash('Selecciona un cuarto', 'error'); return; }
+    setBusyRoom('new');
+    const res = await apiAddRoomToReservation({ ...matchBase, name: matchName, newRoom, price: newPrice.trim(), people: String(Math.max(1, parseInt(newPeople) || 1)) });
+    setBusyRoom(null);
+    if (res.success) { const rmDef = rooms.find(x => x.num.toString() === newRoom); const dp = rmDef ? String(config.prices[rmDef.type] || 0) : newPrice; setEditRooms(prev => [...prev, { origRoom: newRoom, roomNumber: newRoom, price: newPrice.trim() || dp, people: newPeople }]); setNewRoom(''); setNewPrice(''); flash('Cuarto agregado'); onChanged(); } else flash(res.error || 'Error', 'error');
+  };
+
+  const usedRooms = new Set(editRooms.map(e => e.roomNumber));
+
   return (
     <div className="modal-overlay" onClick={onClose}><div className="modal-content modal-xl" onClick={e => e.stopPropagation()}>
-      <div className="modal-header"><h2>Editar Reservacion (esta noche)</h2><button className="modal-close" onClick={onClose}>✕</button></div>
-      <form onSubmit={submit}>
-        <div className="input-group"><label>Nombre</label><input type="text" value={name} onChange={e => setName(e.target.value)} required autoFocus /></div>
-        <div className="input-group"><label>Empleado</label><input type="text" value={employee} onChange={e => setEmployee(e.target.value)} required /></div>
-        <div className="input-group"><label>Telefono (10 numeros)</label><input type="tel" inputMode="numeric" value={phone} onChange={e => onPhone(e.target.value)} maxLength={10} /></div>
-        <div className="input-group"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} /></div>
-        <div className="input-group"><label>Origen</label><input type="text" value={origin} onChange={e => setOrigin(e.target.value)} /></div>
-        <div className="form-row-2col">
-          <div className="input-group"><label>Fecha (noche)</label><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
-          <div className="input-group"><label>Checkout</label><input type="date" value={checkout} onChange={e => setCheckout(e.target.value)} /></div>
+      <div className="modal-header"><h2>Editar Reservacion</h2><button className="modal-close" onClick={onClose}>✕</button></div>
+
+      <div className="edit-section-title">Datos y pago (toda la reservacion)</div>
+      <div className="input-group"><label>Nombre</label><input type="text" value={name} onChange={e => setName(e.target.value)} /></div>
+      <div className="input-group"><label>Empleado</label><input type="text" value={employee} onChange={e => setEmployee(e.target.value)} /></div>
+      <div className="input-group"><label>Telefono (10 numeros)</label><input type="tel" inputMode="numeric" value={phone} onChange={e => onPhone(e.target.value)} maxLength={10} /></div>
+      <div className="input-group"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} /></div>
+      <div className="input-group"><label>Origen</label><input type="text" value={origin} onChange={e => setOrigin(e.target.value)} /></div>
+      {!cxc && <div className="input-group"><label>Tipo de Pago</label><select value={paymentType} onChange={e => setPaymentType(e.target.value as PaymentType)}>{PAYMENT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}</select></div>}
+      <div className="pricing-box">
+        <label className="checkbox-label cxc-label"><input type="checkbox" checked={cxc} onChange={e => setCxc(e.target.checked)} /><span><strong>Cuentas por cobrar</strong></span></label>
+        {cxc && <div className="special-controls"><input type="text" className="special-input" value={entidad} onChange={e => setEntidad(e.target.value)} placeholder="Entidad: Municipio, empresa, etc." /></div>}
+      </div>
+      <div className="input-group"><label>Comentarios</label><textarea value={comments} onChange={e => setComments(e.target.value)} rows={2} /></div>
+      <button className="btn-primary btn-full" disabled={savingInfo} onClick={saveInfo}>{savingInfo ? 'Guardando...' : 'Guardar datos y pago'}</button>
+
+      <div className="edit-section-title">Cuartos de esta reservacion</div>
+      <p className="admin-sub">Edita el numero, precio por noche o personas de cada cuarto por separado.</p>
+      {editRooms.map((er, idx) => (
+        <div key={idx} className="edit-room-row">
+          <select value={er.roomNumber} onChange={e => updateRoomField(idx, 'roomNumber', e.target.value)}>
+            {rooms.map(rm => { const taken = usedRooms.has(rm.num.toString()) && rm.num.toString() !== er.roomNumber; return <option key={rm.num} value={rm.num.toString()} disabled={taken}>{rm.num} ({rm.typeShort}){taken ? ' — en uso' : ''}</option>; })}
+          </select>
+          <input type="number" className="er-price" value={er.price} onChange={e => updateRoomField(idx, 'price', e.target.value)} title="Precio por noche" placeholder="Precio" />
+          <input type="number" className="er-people" min={1} value={er.people} onChange={e => updateRoomField(idx, 'people', e.target.value)} title="Personas" />
+          <button className="btn-mini" disabled={busyRoom === er.origRoom} onClick={() => saveRoom(idx)}>{busyRoom === er.origRoom ? '...' : 'Guardar'}</button>
+          <button className="btn-mini danger" disabled={busyRoom === er.origRoom} onClick={() => removeRoom(idx)}>Quitar</button>
         </div>
-        <div className="input-group"><label>Cuarto</label><select value={roomNumber} onChange={e => { setRoomNumber(e.target.value); const rm = rooms.find(r => r.num.toString() === e.target.value); if (rm) setRoomType(rm.type); }}><option value="">Seleccionar</option>{rooms.map(rm => <option key={rm.num} value={rm.num.toString()}>Cuarto {rm.num} ({rm.typeShort})</option>)}</select></div>
-        <div className="input-group"><label>Tipo de Habitacion</label><select value={roomType} onChange={e => setRoomType(e.target.value as RoomType)}>{ROOM_TYPES.map(rt => <option key={rt} value={rt}>{rt}</option>)}</select></div>
-        <div className="input-group"><label>Personas (total)</label><input type="number" min={1} value={numPeople} onChange={e => setNumPeople(e.target.value)} /></div>
-        <div className="input-group"><label>Tipo de Pago</label><select value={paymentType} onChange={e => setPaymentType(e.target.value as PaymentType)}>{PAYMENT_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}</select></div>
-        <div className="input-group"><label>Estado</label><select value={status} onChange={e => setStatus(e.target.value as ReservationStatus)}>{STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-        <div className="input-group"><label>Anticipo</label><input type="text" value={anticipoPaid} onChange={e => setAnticipoPaid(e.target.value)} /></div>
-        <div className="input-group"><label>Comentarios</label><textarea value={comments} onChange={e => setComments(e.target.value)} rows={2} /></div>
-        <div className="modal-actions"><button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button><button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Actualizar'}</button></div>
-      </form></div></div>
+      ))}
+      <div className="edit-room-add">
+        <select value={newRoom} onChange={e => setNewRoom(e.target.value)}>
+          <option value="">+ Agregar cuarto…</option>
+          {rooms.filter(rm => !usedRooms.has(rm.num.toString())).map(rm => <option key={rm.num} value={rm.num.toString()}>{rm.num} ({rm.typeShort})</option>)}
+        </select>
+        <input type="number" className="er-price" value={newPrice} onChange={e => setNewPrice(e.target.value)} placeholder="Precio/noche" />
+        <input type="number" className="er-people" min={1} value={newPeople} onChange={e => setNewPeople(e.target.value)} title="Personas" />
+        <button className="btn-mini" disabled={busyRoom === 'new' || !newRoom} onClick={addRoom}>{busyRoom === 'new' ? '...' : 'Agregar'}</button>
+      </div>
+
+      <div className="modal-actions"><button className="btn-primary btn-full" onClick={onClose}>Cerrar</button></div>
+    </div></div>
   );
 }
 
 /* DETAIL MODAL */
 function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymentComplete }: {
   r: Reservation; allWeek: Reservation[]; onClose: () => void; onEdit: () => void; onDelete: () => void;
-  onStatus: (s: ReservationStatus) => void; onPaymentComplete: (method: 'Tarjeta' | 'Efectivo') => void;
+  onStatus: (s: ReservationStatus) => void; onPaymentComplete: (method: 'Tarjeta' | 'Efectivo' | 'Transferencia') => void;
 }) {
   const [busy1, setBusy1] = useState(false); const [busy3, setBusy3] = useState(false);
   const [showPayOptions, setShowPayOptions] = useState(false);
@@ -402,13 +482,14 @@ function DetailModal({ r, allWeek, onClose, onEdit, onDelete, onStatus, onPaymen
               <div className="payment-options-buttons">
                 <button className="btn-payment-method tarjeta" disabled={busy3} onClick={async () => { setBusy3(true); await onPaymentComplete('Tarjeta'); setBusy3(false); }}>{busy3 ? '...' : 'Tarjeta'}</button>
                 <button className="btn-payment-method efectivo" disabled={busy3} onClick={async () => { setBusy3(true); await onPaymentComplete('Efectivo'); setBusy3(false); }}>{busy3 ? '...' : 'Efectivo'}</button>
+                <button className="btn-payment-method transfer" disabled={busy3} onClick={async () => { setBusy3(true); await onPaymentComplete('Transferencia'); setBusy3(false); }}>{busy3 ? '...' : 'Transferencia'}</button>
                 <button className="btn-payment-method cancel" onClick={() => setShowPayOptions(false)}>Cancelar</button>
               </div>
             </div>
           )}
         </div>
       )}
-      <div className="modal-actions"><button className="btn-danger" onClick={onDelete}>Eliminar Reservacion</button><button className="btn-primary" onClick={onEdit}>Editar</button></div>
+      <div className="modal-actions"><button className="btn-danger" onClick={onDelete}>Eliminar Reservacion</button><button className="btn-primary" onClick={onEdit}>Editar todo / cuartos</button></div>
     </div></div>
   );
 }
@@ -468,10 +549,9 @@ function ManagerDashboard({ config, onLogout }: { config: Config; onLogout: () =
   useEffect(() => { load(); }, [load]);
 
   const handleAdd = async (data: any) => { const r = await apiAddReservation(data); if (r.success) { flash(`Reservacion guardada (${r.rooms} cuarto(s), ${r.nights} noche(s))`); setShowNew(false); load(); } else flash(r.error || 'Error', 'error'); };
-  const handleUpdate = async (data: any) => { if (!edit?.rowIndex) return; const r = await apiUpdateReservation({ ...data, rowIndex: edit.rowIndex }); if (r.success) { flash('Actualizada'); setEdit(null); load(); } else flash(r.error || 'Error', 'error'); };
   const handleDelete = async (r: Reservation) => { if (!confirm(`Eliminar TODA la reservacion de ${r.name}? (todas las noches y cuartos)`)) return; const res = await apiDeleteReservation(r.reservationId, r.name, r.roomNumber, r.registrationDate); if (res.success) { flash(`Eliminada (${res.deleted} registros)`); setDetail(null); load(); } else flash('Error', 'error'); };
   const bulkStatus = async (r: Reservation, ns: ReservationStatus) => { const res = await apiBulkStatusUpdate({ reservationId: r.reservationId, name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate, newStatus: ns }); if (res.success) { flash(`${ns} aplicado`); setDetail(null); load(); } else flash('Error', 'error'); };
-  const handlePaymentComplete = async (r: Reservation, method: 'Tarjeta' | 'Efectivo') => { const res = await apiBulkPaymentComplete({ reservationId: r.reservationId, name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate, method }); if (res.success) { flash(`Pago completo registrado (${method})`); setDetail(null); load(); } else flash('Error', 'error'); };
+  const handlePaymentComplete = async (r: Reservation, method: 'Tarjeta' | 'Efectivo' | 'Transferencia') => { const res = await apiBulkPaymentComplete({ reservationId: r.reservationId, name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate, method }); if (res.success) { flash(`Pago completo registrado (${method})`); setDetail(null); load(); } else flash('Error', 'error'); };
   const handleReport = async (room: string, desc: string) => { const res = await apiAddMaintenance(room, desc, 'Gerente'); if (res.success) { flash('Reporte enviado al admin'); setShowReport(false); } else flash('Error', 'error'); };
 
   return (
@@ -486,7 +566,7 @@ function ManagerDashboard({ config, onLogout }: { config: Config; onLogout: () =
       </main>
       {showNew && <NewReservationModal config={config} onClose={() => setShowNew(false)} onSave={handleAdd} />}
       {showReport && <ReportModal rooms={config.rooms} onClose={() => setShowReport(false)} onSave={handleReport} />}
-      {edit && <EditReservationModal config={config} onClose={() => setEdit(null)} onSave={handleUpdate} initial={edit} />}
+      {edit && <ReservationEditor config={config} reservation={edit} allWeek={reservations} onClose={() => setEdit(null)} onChanged={load} flash={flash} />}
       {detail && !edit && <DetailModal r={detail} allWeek={reservations} onClose={() => setDetail(null)} onEdit={() => { setEdit(detail); setDetail(null); }} onDelete={() => handleDelete(detail)} onStatus={async ns => bulkStatus(detail, ns)} onPaymentComplete={async method => handlePaymentComplete(detail, method)} />}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.type === 'success' ? '✓' : '✕'} {toast.message}</div>}
     </div>
@@ -500,28 +580,36 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
   const [viewMonth, setViewMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [payingId, setPayingId] = useState<string | null>(null);
   const [cleanDay, setCleanDay] = useState(fmt(addDays(new Date(), -1)));
+  const [cleanedRooms, setCleanedRooms] = useState<string[]>([]);
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
   const loadPayLog = useCallback(async () => { setPayLog(await apiGetPaymentLog(selectedDay)); }, [selectedDay]);
   useEffect(() => { loadPayLog(); }, [loadPayLog]);
+  const loadCleaned = useCallback(async () => { setCleanedRooms(await apiGetCleaned(cleanDay)); }, [cleanDay]);
+  useEffect(() => { loadCleaned(); }, [loadCleaned]);
 
   const dayRes = allRes.filter(r => r.date === selectedDay);
   const dayTotal = dayRes.reduce((s, r) => s + r.price, 0);
   const dayTarjeta = dayRes.filter(r => r.paymentType === 'Tarjeta').reduce((s, r) => s + r.price, 0);
   const dayEfectivo = dayRes.filter(r => r.paymentType === 'Efectivo').reduce((s, r) => s + r.price, 0);
+  const dayTransfer = dayRes.filter(r => r.paymentType === 'Transferencia').reduce((s, r) => s + r.price, 0);
   const dayPending = (() => { const seen = new Set<string>(); let sum = 0; dayRes.forEach(r => { const k = groupKey(r); if (seen.has(k)) return; seen.add(k); sum += getGroupRemaining(r, allRes); }); return sum; })();
   const payTarjeta = payLog.filter(p => p.method === 'Tarjeta').reduce((s, p) => s + p.amount, 0);
   const payEfectivo = payLog.filter(p => p.method === 'Efectivo').reduce((s, p) => s + p.amount, 0);
+  const payTransfer = payLog.filter(p => p.method === 'Transferencia').reduce((s, p) => s + p.amount, 0);
 
   const mon = getMonday(new Date()); const sun = addDays(mon, 6);
   const weekRes = allRes.filter(r => r.date >= fmt(mon) && r.date <= fmt(sun));
   const weekTotal = weekRes.reduce((s, r) => s + r.price, 0);
   const weekTarjeta = weekRes.filter(r => r.paymentType === 'Tarjeta').reduce((s, r) => s + r.price, 0);
   const weekEfectivo = weekRes.filter(r => r.paymentType === 'Efectivo').reduce((s, r) => s + r.price, 0);
+  const weekTransfer = weekRes.filter(r => r.paymentType === 'Transferencia').reduce((s, r) => s + r.price, 0);
 
   const monthStr = `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, '0')}`;
   const monthRes = allRes.filter(r => r.date.startsWith(monthStr));
   const monthTotal = monthRes.reduce((s, r) => s + r.price, 0);
   const monthTarjeta = monthRes.filter(r => r.paymentType === 'Tarjeta').reduce((s, r) => s + r.price, 0);
   const monthEfectivo = monthRes.filter(r => r.paymentType === 'Efectivo').reduce((s, r) => s + r.price, 0);
+  const monthTransfer = monthRes.filter(r => r.paymentType === 'Transferencia').reduce((s, r) => s + r.price, 0);
 
   const roomCounts: Record<string, number> = {};
   allRes.forEach(r => { if (r.roomNumber) roomCounts[r.roomNumber] = (roomCounts[r.roomNumber] || 0) + 1; });
@@ -549,12 +637,19 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
   allRes.forEach(r => { if (!r.date) return; const mk = r.date.substring(0, 7); monthMap[mk] = (monthMap[mk] || 0) + r.price; });
   const monthlyData = Object.entries(monthMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-12).map(([mk, v]) => { const [y, m] = mk.split('-'); return { label: `${MONTH_ABBR[parseInt(m) - 1]} ${y.substring(2)}`, value: v }; });
 
-  // Rooms to clean (occupied on cleanDay)
-  const cleanRes = allRes.filter(r => r.date === cleanDay);
-  const cleanRoomsMap: Record<string, { name: string; checkout: string }> = {};
-  cleanRes.forEach(r => { if (r.roomNumber) cleanRoomsMap[r.roomNumber] = { name: r.name, checkout: r.checkout }; });
-  const cleanRooms = Object.entries(cleanRoomsMap).sort((a, b) => Number(a[0]) - Number(b[0]));
+  // Rooms to clean (occupied on cleanDay), classified refresh vs full
   const nextDay = fmt(addDays(new Date(cleanDay + 'T12:00:00'), 1));
+  const cleanRes = allRes.filter(r => r.date === cleanDay);
+  const nextRes = allRes.filter(r => r.date === nextDay);
+  const nextMap: Record<string, Reservation> = {};
+  nextRes.forEach(r => { if (r.roomNumber) nextMap[r.roomNumber] = r; });
+  const cleanMap: Record<string, Reservation> = {};
+  cleanRes.forEach(r => { if (r.roomNumber) cleanMap[r.roomNumber] = r; });
+  const cleanRooms = Object.entries(cleanMap).sort((a, b) => Number(a[0]) - Number(b[0])).map(([room, todayR]) => {
+    const nx = nextMap[room];
+    const staying = !!nx && groupKey(nx) === groupKey(todayR); // same guest continues
+    return { room, name: todayR.name, kind: staying ? 'refresh' : 'full' as 'refresh' | 'full', nextName: nx && !staying ? nx.name : '' };
+  });
 
   const markCxcPaid = async (g: { key: string; sample: Reservation }) => {
     setPayingId(g.key);
@@ -564,6 +659,14 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
     if (res.success) onReload();
   };
   const delPayment = async (rowIndex: number) => { if (!confirm('Eliminar este registro de pago?')) return; const res = await apiDeletePayment(rowIndex); if (res.success) loadPayLog(); };
+  const toggleStatus = async (g: { key: string; sample: Reservation; status: string }) => {
+    setStatusBusy(g.key);
+    const r = g.sample; const ns = g.status === 'Check-in' ? 'Reserva' : 'Check-in';
+    const res = await apiBulkStatusUpdate({ reservationId: r.reservationId, name: r.name, roomNumber: r.roomNumber, registrationDate: r.registrationDate, newStatus: ns });
+    setStatusBusy(null);
+    if (res.success) onReload();
+  };
+  const toggleClean = async (room: string, clean: boolean) => { const res = await apiSetClean(cleanDay, room, clean); if (res.success) loadCleaned(); };
 
   const calFirst = new Date(viewMonth.year, viewMonth.month, 1);
   const calLast = new Date(viewMonth.year, viewMonth.month + 1, 0);
@@ -586,6 +689,7 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
           <div className="admin-stat-row"><span>Total</span><strong className="text-success">{fmtMXN(dayTotal)}</strong></div>
           <div className="admin-stat-row"><span>Tarjeta</span><strong>{fmtMXN(dayTarjeta)}</strong></div>
           <div className="admin-stat-row"><span>Efectivo</span><strong>{fmtMXN(dayEfectivo)}</strong></div>
+          <div className="admin-stat-row"><span>Transferencia</span><strong>{fmtMXN(dayTransfer)}</strong></div>
           <div className="admin-stat-row"><span>Pendiente por cobrar</span><strong className="text-danger">{fmtMXN(dayPending)}</strong></div>
         </div>
         <div className="admin-card">
@@ -594,6 +698,7 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
           <div className="admin-stat-row"><span>Total</span><strong className="text-success">{fmtMXN(weekTotal)}</strong></div>
           <div className="admin-stat-row"><span>Tarjeta</span><strong>{fmtMXN(weekTarjeta)}</strong></div>
           <div className="admin-stat-row"><span>Efectivo</span><strong>{fmtMXN(weekEfectivo)}</strong></div>
+          <div className="admin-stat-row"><span>Transferencia</span><strong>{fmtMXN(weekTransfer)}</strong></div>
         </div>
         <div className="admin-card">
           <h3>Cuartos Mas Reservados</h3>
@@ -615,7 +720,7 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
             <>
               <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Hora</th><th>Reservacion</th><th>Cuarto</th><th>Metodo</th><th>Monto Cobrado</th><th></th></tr></thead>
                 <tbody>{payLog.slice().sort((a, b) => a.timestamp.localeCompare(b.timestamp)).map((p, i) => (<tr key={i}><td>{p.timestamp.substring(11, 16)}</td><td>{p.name}</td><td>{p.room}</td><td><span className={`pay-method-tag ${p.method.toLowerCase()}`}>{p.method}</span></td><td className="text-success"><strong>{fmtMXN(p.amount)}</strong></td><td><button className="btn-x" title="Eliminar registro" onClick={() => delPayment(p.rowIndex)}>✕</button></td></tr>))}</tbody></table></div>
-              <div className="pay-totals"><div className="pay-total-box tarjeta"><span>Total Tarjeta</span><strong>{fmtMXN(payTarjeta)}</strong></div><div className="pay-total-box efectivo"><span>Total Efectivo</span><strong>{fmtMXN(payEfectivo)}</strong></div><div className="pay-total-box grand"><span>Total Recibido</span><strong>{fmtMXN(payTarjeta + payEfectivo)}</strong></div></div>
+              <div className="pay-totals"><div className="pay-total-box tarjeta"><span>Total Tarjeta</span><strong>{fmtMXN(payTarjeta)}</strong></div><div className="pay-total-box efectivo"><span>Total Efectivo</span><strong>{fmtMXN(payEfectivo)}</strong></div><div className="pay-total-box transfer"><span>Total Transferencia</span><strong>{fmtMXN(payTransfer)}</strong></div><div className="pay-total-box grand"><span>Total Recibido</span><strong>{fmtMXN(payTarjeta + payEfectivo + payTransfer)}</strong></div></div>
             </>
           )}
         </div>
@@ -627,6 +732,7 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
           <div className="admin-stat-row"><span>Ingreso Total</span><strong className="text-success">{fmtMXN(monthTotal)}</strong></div>
           <div className="admin-stat-row"><span>Total Tarjeta</span><strong>{fmtMXN(monthTarjeta)}</strong></div>
           <div className="admin-stat-row"><span>Total Efectivo</span><strong>{fmtMXN(monthEfectivo)}</strong></div>
+          <div className="admin-stat-row"><span>Total Transferencia</span><strong>{fmtMXN(monthTransfer)}</strong></div>
           <div className="admin-stat-row"><span>Necesitan Factura</span><strong>{facturaKeys.size}</strong></div>
           <div className="admin-stat-row"><span>Cuentas por Cobrar</span><strong>{cxcKeys.size}</strong></div>
         </div>
@@ -663,7 +769,7 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
           <h3>Desglose por Reservacion — {MONTH_NAMES[viewMonth.month]} {viewMonth.year}</h3>
           {monthGroups.length === 0 ? <p className="text-muted">Sin reservaciones este mes.</p> : (
             <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Reservacion</th><th>Cuarto</th><th>Fechas</th><th>Noches</th><th>Total</th><th>Pagado</th><th>Restante</th><th>Estado</th></tr></thead>
-              <tbody>{monthGroups.map((g, i) => (<tr key={i} className={g.remaining > 0 ? 'row-unpaid' : ''}><td>{g.name}{g.sample.cxc ? ' 🏛️' : ''}{g.sample.factura ? ' 🧾' : ''}</td><td>{g.room}</td><td>{fmtDisp(g.start)}{g.dates.length > 1 ? ` → ${fmtDisp(g.end)}` : ''}</td><td>{g.dates.length}</td><td>{fmtMXN(g.total)}</td><td>{fmtMXN(g.paid)}</td><td className={g.remaining > 0 ? 'text-danger' : 'text-success'}><strong>{g.remaining > 0 ? fmtMXN(g.remaining) : 'Pagado'}</strong></td><td>{g.status === 'Check-in' ? <span className="status-chip checkin">✓ Check-in</span> : <span className="status-chip reserva">Reserva</span>}</td></tr>))}</tbody></table></div>
+              <tbody>{monthGroups.map((g, i) => (<tr key={i} className={g.remaining > 0 ? 'row-unpaid' : ''}><td>{g.name}{g.sample.cxc ? ' 🏛️' : ''}{g.sample.factura ? ' 🧾' : ''}</td><td>{g.room}</td><td>{fmtDisp(g.start)}{g.dates.length > 1 ? ` → ${fmtDisp(g.end)}` : ''}</td><td>{g.dates.length}</td><td>{fmtMXN(g.total)}</td><td>{fmtMXN(g.paid)}</td><td className={g.remaining > 0 ? 'text-danger' : 'text-success'}><strong>{g.remaining > 0 ? fmtMXN(g.remaining) : 'Pagado'}</strong></td><td><div className="status-cell">{g.status === 'Check-in' ? <span className="status-chip checkin">✓ Check-in</span> : <span className="status-chip reserva">Reserva</span>}<button className="btn-mini" disabled={statusBusy === g.key} onClick={() => toggleStatus(g)}>{statusBusy === g.key ? '...' : g.status === 'Check-in' ? '→ Reserva' : '→ Check-in'}</button></div></td></tr>))}</tbody></table></div>
           )}
         </div>
       </div>
@@ -672,9 +778,9 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
       <div className="admin-row">
         <div className="admin-card admin-card-full clean-card">
           <div className="admin-card-head"><h3>🧹 Cuartos por Limpiar</h3><div className="clean-picker"><span>Usados el:</span><input type="date" className="admin-date-picker" value={cleanDay} onChange={e => { if (e.target.value) setCleanDay(e.target.value); }} /></div></div>
-          <p className="admin-sub">Cuartos ocupados el {fmtDisp(cleanDay)} — limpiar antes de la siguiente entrada ({fmtDisp(nextDay)}).</p>
+          <p className="admin-sub">Cuartos ocupados el {fmtDisp(cleanDay)}. <strong>Limpieza completa</strong> = entra otra reservacion o queda vacio. <strong>Solo amenidades</strong> = el mismo huesped sigue (toallas, shampoo).</p>
           {cleanRooms.length === 0 ? <p className="text-muted">Ningun cuarto ocupado ese dia.</p> : (
-            <div className="clean-grid">{cleanRooms.map(([room, info]) => { const leaving = info.checkout === nextDay; return (<div key={room} className={`clean-chip ${leaving ? 'leaving' : ''}`}><span className="clean-room">Cuarto {room}</span><span className="clean-name">{info.name}</span>{leaving && <span className="clean-out">Sale hoy</span>}</div>); })}</div>
+            <div className="clean-grid">{cleanRooms.map(({ room, name, kind, nextName }) => { const isClean = cleanedRooms.includes(room); return (<div key={room} className={`clean-chip ${kind === 'full' ? 'full-clean' : 'refresh-clean'} ${isClean ? 'is-clean' : ''}`}><span className="clean-room">Cuarto {room}{isClean ? ' ✓' : ''}</span><span className="clean-name">{name}</span><span className={`clean-kind ${kind}`}>{kind === 'full' ? (nextName ? `Limpieza completa · entra ${nextName}` : 'Limpieza completa') : 'Solo amenidades (sigue)'}</span><button className="btn-mini clean-btn" onClick={() => toggleClean(room, !isClean)}>{isClean ? 'Marcar sucio' : 'Marcar limpio'}</button></div>); })}</div>
           )}
         </div>
       </div>

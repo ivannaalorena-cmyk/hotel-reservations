@@ -34,7 +34,7 @@ export async function apiGetAllReservations() {
 
 export async function apiAddReservation(r: {
   name: string; employee: string; phone: string; email: string; origin: string;
-  startDate: string; endDate: string; roomNumbers: string; numPeople: number;
+  startDate: string; endDate: string; roomNumbers: string; numPeople: number; peopleCounts: string;
   paymentType: string; anticipoPaid: string; comments: string; paidInFull: boolean;
   specialPrice: string; factura: boolean; cxc: boolean; entidad: string;
 }) {
@@ -42,7 +42,7 @@ export async function apiAddReservation(r: {
     action: 'addReservation',
     name: r.name, employee: r.employee, phone: r.phone, email: r.email, origin: r.origin,
     startDate: r.startDate, endDate: r.endDate, roomNumbers: r.roomNumbers,
-    numPeople: r.numPeople.toString(), paymentType: r.paymentType,
+    numPeople: r.numPeople.toString(), peopleCounts: r.peopleCounts, paymentType: r.paymentType,
     anticipoPaid: r.anticipoPaid, comments: r.comments, paidInFull: r.paidInFull ? 'true' : 'false',
     specialPrice: r.specialPrice, factura: r.factura ? 'true' : 'false',
     cxc: r.cxc ? 'true' : 'false', entidad: r.entidad,
@@ -52,6 +52,35 @@ export async function apiAddReservation(r: {
 
 export async function apiMarkPaid(p: { reservationId: string; name: string; roomNumber: string; registrationDate: string; }) {
   const data = await gasGet({ action: 'markPaid', reservationId: p.reservationId, name: p.name, roomNumber: p.roomNumber, registrationDate: p.registrationDate });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiBulkEditReservation(p: { reservationId: string; name: string; roomNumber: string; registrationDate: string; newName: string; newEmployee: string; newPhone: string; newEmail: string; newOrigin: string; newComments: string; paymentType: string; cxc: string; entidad: string; newPrice: string; }) {
+  const data = await gasGet({ action: 'bulkEditReservation', reservationId: p.reservationId, name: p.name, roomNumber: p.roomNumber, registrationDate: p.registrationDate, newName: p.newName, newEmployee: p.newEmployee, newPhone: p.newPhone, newEmail: p.newEmail, newOrigin: p.newOrigin, newComments: p.newComments, paymentType: p.paymentType, cxc: p.cxc, entidad: p.entidad, newPrice: p.newPrice });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiEditRoom(p: { reservationId: string; name: string; registrationDate: string; oldRoom: string; newRoom: string; price: string; people: string; }) {
+  const data = await gasGet({ action: 'editRoom', reservationId: p.reservationId, name: p.name, roomNumber: p.oldRoom, registrationDate: p.registrationDate, oldRoom: p.oldRoom, newRoom: p.newRoom, price: p.price, people: p.people });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiAddRoomToReservation(p: { reservationId: string; name: string; registrationDate: string; newRoom: string; price: string; people: string; }) {
+  const data = await gasGet({ action: 'addRoomToReservation', reservationId: p.reservationId, name: p.name, registrationDate: p.registrationDate, newRoom: p.newRoom, price: p.price, people: p.people });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiRemoveRoomFromReservation(p: { reservationId: string; name: string; registrationDate: string; room: string; }) {
+  const data = await gasGet({ action: 'removeRoomFromReservation', reservationId: p.reservationId, name: p.name, roomNumber: p.room, registrationDate: p.registrationDate, room: p.room });
+  return data || { error: 'Error de conexion' };
+}
+
+export async function apiGetCleaned(date: string) {
+  const data = await gasGet({ action: 'getCleaned', date });
+  return data?.rooms || [];
+}
+export async function apiSetClean(date: string, room: string, clean: boolean) {
+  const data = await gasGet({ action: 'setClean', date, room, clean: clean ? 'true' : 'false' });
   return data || { error: 'Error de conexion' };
 }
 
