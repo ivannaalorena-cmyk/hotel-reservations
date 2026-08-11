@@ -456,3 +456,11 @@ code{background:var(--sand-dark);padding:2px 8px;border-radius:4px;font-family:m
 .clean-kind{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-top:2px;}
 .clean-kind.full{color:#c05621;}
 .clean-kind.refresh{color:#3b6fa0;}
+
+/* v12: chart month picker, compact add-room box */
+.chart-month-sel{padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:12px;background:white;color:var(--navy);cursor:pointer;}
+.add-room-box{max-width:520px;background:var(--sand);border:1px dashed var(--border);}
+.add-room-box h4{margin:0 0 2px;font-size:14px;color:var(--navy);}
+.add-room-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+.add-room-inline input{width:150px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;}
+.add-room-inline select{flex:1;min-width:150px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-body);font-size:13px;background:white;}

@@ -579,13 +579,10 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
   const [payLog, setPayLog] = useState<PaymentLogEntry[]>([]);
   const [viewMonth, setViewMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [payingId, setPayingId] = useState<string | null>(null);
-  const [cleanDay, setCleanDay] = useState(fmt(addDays(new Date(), -1)));
-  const [cleanedRooms, setCleanedRooms] = useState<string[]>([]);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  const [chartMonth, setChartMonth] = useState<string>(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
   const loadPayLog = useCallback(async () => { setPayLog(await apiGetPaymentLog(selectedDay)); }, [selectedDay]);
   useEffect(() => { loadPayLog(); }, [loadPayLog]);
-  const loadCleaned = useCallback(async () => { setCleanedRooms(await apiGetCleaned(cleanDay)); }, [cleanDay]);
-  useEffect(() => { loadCleaned(); }, [loadCleaned]);
 
   const dayRes = allRes.filter(r => r.date === selectedDay);
   const dayTotal = dayRes.reduce((s, r) => s + r.price, 0);
@@ -628,28 +625,21 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
   const facturaKeys = new Set(monthRes.filter(r => r.factura).map(r => groupKey(r)));
   const cxcKeys = new Set(monthRes.filter(r => r.cxc).map(r => groupKey(r)));
 
-  // Weekly revenue (last 10 weeks with any data)
-  const weekMap: Record<string, number> = {};
-  allRes.forEach(r => { if (!r.date) return; const wk = fmt(getMonday(new Date(r.date + 'T12:00:00'))); weekMap[wk] = (weekMap[wk] || 0) + r.price; });
-  const weeklyData = Object.entries(weekMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-10).map(([wk, v]) => { const [, m, d] = wk.split('-'); return { label: `${d}/${m}`, value: v }; });
-  // Monthly revenue
+  // Monthly revenue map (also drives the weekly-chart month picker)
   const monthMap: Record<string, number> = {};
   allRes.forEach(r => { if (!r.date) return; const mk = r.date.substring(0, 7); monthMap[mk] = (monthMap[mk] || 0) + r.price; });
+  const availableMonths = Object.keys(monthMap).sort();
   const monthlyData = Object.entries(monthMap).sort((a, b) => a[0].localeCompare(b[0])).slice(-12).map(([mk, v]) => { const [y, m] = mk.split('-'); return { label: `${MONTH_ABBR[parseInt(m) - 1]} ${y.substring(2)}`, value: v }; });
 
-  // Rooms to clean (occupied on cleanDay), classified refresh vs full
-  const nextDay = fmt(addDays(new Date(cleanDay + 'T12:00:00'), 1));
-  const cleanRes = allRes.filter(r => r.date === cleanDay);
-  const nextRes = allRes.filter(r => r.date === nextDay);
-  const nextMap: Record<string, Reservation> = {};
-  nextRes.forEach(r => { if (r.roomNumber) nextMap[r.roomNumber] = r; });
-  const cleanMap: Record<string, Reservation> = {};
-  cleanRes.forEach(r => { if (r.roomNumber) cleanMap[r.roomNumber] = r; });
-  const cleanRooms = Object.entries(cleanMap).sort((a, b) => Number(a[0]) - Number(b[0])).map(([room, todayR]) => {
-    const nx = nextMap[room];
-    const staying = !!nx && groupKey(nx) === groupKey(todayR); // same guest continues
-    return { room, name: todayR.name, kind: staying ? 'refresh' : 'full' as 'refresh' | 'full', nextName: nx && !staying ? nx.name : '' };
-  });
+  // Weekly revenue — 'all' = last 10 weeks with data; otherwise weeks within the chosen month
+  const weeklyData = (() => {
+    const wm: Record<string, number> = {};
+    allRes.forEach(r => { if (!r.date) return; if (chartMonth !== 'all' && !r.date.startsWith(chartMonth)) return; const wk = fmt(getMonday(new Date(r.date + 'T12:00:00'))); wm[wk] = (wm[wk] || 0) + r.price; });
+    let entries = Object.entries(wm).sort((a, b) => a[0].localeCompare(b[0]));
+    if (chartMonth === 'all') entries = entries.slice(-10);
+    return entries.map(([wk, v]) => { const [, m, d] = wk.split('-'); return { label: `${d}/${m}`, value: v }; });
+  })();
+
 
   const markCxcPaid = async (g: { key: string; sample: Reservation }) => {
     setPayingId(g.key);
@@ -666,7 +656,6 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
     setStatusBusy(null);
     if (res.success) onReload();
   };
-  const toggleClean = async (room: string, clean: boolean) => { const res = await apiSetClean(cleanDay, room, clean); if (res.success) loadCleaned(); };
 
   const calFirst = new Date(viewMonth.year, viewMonth.month, 1);
   const calLast = new Date(viewMonth.year, viewMonth.month + 1, 0);
@@ -708,7 +697,7 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
 
       {/* Charts */}
       <div className="admin-row">
-        <div className="admin-card admin-card-wide"><h3>Ingresos por Semana (Lun–Dom)</h3><BarChart data={weeklyData} color="#A7713F" /></div>
+        <div className="admin-card admin-card-wide"><div className="admin-card-head"><h3>Ingresos por Semana (Lun–Dom)</h3><select className="chart-month-sel" value={chartMonth} onChange={e => setChartMonth(e.target.value)}><option value="all">Ultimas 10 semanas</option>{availableMonths.slice().reverse().map(mk => { const [y, m] = mk.split('-'); return <option key={mk} value={mk}>{MONTH_ABBR[parseInt(m) - 1]} {y}</option>; })}</select></div>{weeklyData.length === 0 ? <p className="text-muted">Sin datos para este mes.</p> : <BarChart data={weeklyData} color="#A7713F" />}</div>
         <div className="admin-card admin-card-wide"><h3>Ingresos por Mes</h3><BarChart data={monthlyData} color="#5D3F23" /></div>
       </div>
 
@@ -774,31 +763,38 @@ function AdminReports({ allRes, onReload }: { allRes: Reservation[]; onReload: (
         </div>
       </div>
 
-      {/* Rooms to clean */}
-      <div className="admin-row">
-        <div className="admin-card admin-card-full clean-card">
-          <div className="admin-card-head"><h3>🧹 Cuartos por Limpiar</h3><div className="clean-picker"><span>Usados el:</span><input type="date" className="admin-date-picker" value={cleanDay} onChange={e => { if (e.target.value) setCleanDay(e.target.value); }} /></div></div>
-          <p className="admin-sub">Cuartos ocupados el {fmtDisp(cleanDay)}. <strong>Limpieza completa</strong> = entra otra reservacion o queda vacio. <strong>Solo amenidades</strong> = el mismo huesped sigue (toallas, shampoo).</p>
-          {cleanRooms.length === 0 ? <p className="text-muted">Ningun cuarto ocupado ese dia.</p> : (
-            <div className="clean-grid">{cleanRooms.map(({ room, name, kind, nextName }) => { const isClean = cleanedRooms.includes(room); return (<div key={room} className={`clean-chip ${kind === 'full' ? 'full-clean' : 'refresh-clean'} ${isClean ? 'is-clean' : ''}`}><span className="clean-room">Cuarto {room}{isClean ? ' ✓' : ''}</span><span className="clean-name">{name}</span><span className={`clean-kind ${kind}`}>{kind === 'full' ? (nextName ? `Limpieza completa · entra ${nextName}` : 'Limpieza completa') : 'Solo amenidades (sigue)'}</span><button className="btn-mini clean-btn" onClick={() => toggleClean(room, !isClean)}>{isClean ? 'Marcar sucio' : 'Marcar limpio'}</button></div>); })}</div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
 
-/* ADMIN: SETTINGS TAB */
-function AdminSettings({ config, onConfigChange, flash }: { config: Config; onConfigChange: () => void; flash: (m: string, t?: 'success' | 'error') => void }) {
+/* ADMIN: SETTINGS / MANTENIMIENTO TAB */
+function AdminSettings({ config, allRes, onConfigChange, flash }: { config: Config; allRes: Reservation[]; onConfigChange: () => void; flash: (m: string, t?: 'success' | 'error') => void }) {
   const { rooms, prices } = config;
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
   const [users, setUsers] = useState<UserAccess[]>([]);
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [newRoomNum, setNewRoomNum] = useState(''); const [newRoomType, setNewRoomType] = useState<RoomType>(ROOM_TYPES[0]);
   const [blockNum, setBlockNum] = useState(''); const [blockReason, setBlockReason] = useState('');
+  const [cleanDay, setCleanDay] = useState(fmt(addDays(new Date(), -1)));
+  const [cleanedRooms, setCleanedRooms] = useState<string[]>([]);
 
   const loadExtras = useCallback(async () => { setMaintenance(await apiGetMaintenance()); setUsers(await apiGetUsers()); }, []);
   useEffect(() => { loadExtras(); }, [loadExtras]);
+  const loadCleaned = useCallback(async () => { setCleanedRooms(await apiGetCleaned(cleanDay)); }, [cleanDay]);
+  useEffect(() => { loadCleaned(); }, [loadCleaned]);
+  const toggleClean = async (room: string, clean: boolean) => { const res = await apiSetClean(cleanDay, room, clean); if (res.success) loadCleaned(); };
+
+  // Rooms occupied on cleanDay, classified refresh vs full
+  const nextDay = fmt(addDays(new Date(cleanDay + 'T12:00:00'), 1));
+  const nextMap: Record<string, Reservation> = {};
+  allRes.filter(r => r.date === nextDay).forEach(r => { if (r.roomNumber) nextMap[r.roomNumber] = r; });
+  const cleanMap: Record<string, Reservation> = {};
+  allRes.filter(r => r.date === cleanDay).forEach(r => { if (r.roomNumber) cleanMap[r.roomNumber] = r; });
+  const cleanRooms = Object.entries(cleanMap).sort((a, b) => Number(a[0]) - Number(b[0])).map(([room, todayR]) => {
+    const nx = nextMap[room];
+    const staying = !!nx && groupKey(nx) === groupKey(todayR);
+    return { room, name: todayR.name, kind: (staying ? 'refresh' : 'full') as 'refresh' | 'full', nextName: nx && !staying ? nx.name : '' };
+  });
 
   const savePrice = async (rt: RoomType) => { const v = priceEdits[rt]; if (v === undefined || v === '') return; const res = await apiUpdatePrice(rt, Number(v)); if (res.success) { flash('Precio actualizado'); onConfigChange(); } else flash('Error', 'error'); };
   const addRoom = async () => { if (!newRoomNum.trim()) return; const res = await apiAddRoom(newRoomNum.trim(), newRoomType); if (res.success) { flash('Cuarto agregado'); setNewRoomNum(''); onConfigChange(); } else flash(res.error || 'Error', 'error'); };
@@ -814,6 +810,16 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
   return (
     <div className="admin-body">
       <div className="admin-row">
+        <div className="admin-card admin-card-full clean-card">
+          <div className="admin-card-head"><h3>🧹 Cuartos por Limpiar</h3><div className="clean-picker"><span>Usados el:</span><input type="date" className="admin-date-picker" value={cleanDay} onChange={e => { if (e.target.value) setCleanDay(e.target.value); }} /></div></div>
+          <p className="admin-sub">Cuartos ocupados el {fmtDisp(cleanDay)}. <strong>Limpieza completa</strong> = entra otra reservacion o queda vacio. <strong>Solo amenidades</strong> = el mismo huesped sigue (toallas, shampoo).</p>
+          {cleanRooms.length === 0 ? <p className="text-muted">Ningun cuarto ocupado ese dia.</p> : (
+            <div className="clean-grid">{cleanRooms.map(({ room, name, kind, nextName }) => { const isClean = cleanedRooms.includes(room); return (<div key={room} className={`clean-chip ${kind === 'full' ? 'full-clean' : 'refresh-clean'} ${isClean ? 'is-clean' : ''}`}><span className="clean-room">Cuarto {room}{isClean ? ' ✓' : ''}</span><span className="clean-name">{name}</span><span className={`clean-kind ${kind}`}>{kind === 'full' ? (nextName ? `Limpieza completa · entra ${nextName}` : 'Limpieza completa') : 'Solo amenidades (sigue)'}</span><button className="btn-mini clean-btn" onClick={() => toggleClean(room, !isClean)}>{isClean ? 'Marcar sucio' : 'Marcar limpio'}</button></div>); })}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="admin-row">
         <div className="admin-card admin-card-full">
           <h3>🔧 Cosas por Arreglar (reportadas por el gerente)</h3>
           {pendingMant.length === 0 ? <p className="text-muted">No hay pendientes.</p> : (
@@ -825,7 +831,7 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
       </div>
 
       <div className="admin-row">
-        <div className="admin-card admin-card-wide">
+        <div className="admin-card admin-card-full">
           <h3>Precios por Tipo de Habitacion</h3>
           <p className="admin-sub">Los cambios aplican a nuevas reservaciones (no a las ya guardadas).</p>
           {ROOM_TYPES.map(rt => (
@@ -838,12 +844,6 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
               </div>
             </div>
           ))}
-        </div>
-        <div className="admin-card">
-          <h3>Agregar Cuarto</h3>
-          <div className="input-group"><label>Numero</label><input type="number" value={newRoomNum} onChange={e => setNewRoomNum(e.target.value)} placeholder="Ej: 131" /></div>
-          <div className="input-group"><label>Tipo</label><select value={newRoomType} onChange={e => setNewRoomType(e.target.value as RoomType)}>{ROOM_TYPES.map(rt => <option key={rt} value={rt}>{rt}</option>)}</select></div>
-          <button className="btn-primary btn-full" onClick={addRoom}>Agregar Cuarto</button>
         </div>
       </div>
 
@@ -883,6 +883,18 @@ function AdminSettings({ config, onConfigChange, flash }: { config: Config; onCo
             <tbody>{users.map((u, i) => (<tr key={i}><td><code>{u.password}</code></td><td>{u.role === 'admin' ? <span className="status-chip checkin">Admin</span> : <span className="status-chip reserva">Gerente</span>}</td><td>{u.label}</td><td>{u.lastUsed ? u.lastUsed.substring(0, 16) : 'Nunca'}</td></tr>))}</tbody></table></div>
         </div>
       </div>
+
+      <div className="admin-row">
+        <div className="admin-card add-room-box">
+          <h4>Agregar un cuarto nuevo</h4>
+          <p className="admin-sub">Solo si el hotel realmente tiene un cuarto adicional.</p>
+          <div className="add-room-inline">
+            <input type="number" value={newRoomNum} onChange={e => setNewRoomNum(e.target.value)} placeholder="Numero (ej: 131)" />
+            <select value={newRoomType} onChange={e => setNewRoomType(e.target.value as RoomType)}>{ROOM_TYPES.map(rt => <option key={rt} value={rt}>{rt}</option>)}</select>
+            <button className="btn-mini" onClick={addRoom}>Agregar</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -903,11 +915,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     <div className="dashboard">
       <header className="dashboard-header">
         <div className="header-left"><h1 className="app-title"><span className="title-icon">🏨</span> Hotel Ancira — Admin</h1></div>
-        <div className="header-center"><div className="admin-tabs"><button className={`admin-tab ${tab === 'reports' ? 'active' : ''}`} onClick={() => setTab('reports')}>Reportes de Dinero</button><button className={`admin-tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Configuracion</button></div></div>
+        <div className="header-center"><div className="admin-tabs"><button className={`admin-tab ${tab === 'reports' ? 'active' : ''}`} onClick={() => setTab('reports')}>Reportes de Dinero</button><button className={`admin-tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>Mantenimiento</button></div></div>
         <div className="header-right"><button className="btn-ghost" onClick={onLogout}>Salir</button></div>
       </header>
       {loading ? <div className="loading-state"><div className="spinner" /><p>Cargando datos...</p></div> :
-        tab === 'reports' ? <AdminReports allRes={allRes} onReload={loadAll} /> : <AdminSettings config={config} onConfigChange={loadConfig} flash={flash} />}
+        tab === 'reports' ? <AdminReports allRes={allRes} onReload={loadAll} /> : <AdminSettings config={config} allRes={allRes} onConfigChange={loadConfig} flash={flash} />}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.type === 'success' ? '✓' : '✕'} {toast.message}</div>}
     </div>
   );
